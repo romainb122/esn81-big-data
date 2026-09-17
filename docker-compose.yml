@@ -1,0 +1,17 @@
+services:
+  s3:
+    image: chrislusf/seaweedfs:4.47
+    command: ["mini", "-dir=/data"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8333:8333"
+    environment:
+      # Identifiants de demonstration pour un usage local.
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: bigdata-local-secret
+      S3_BUCKET: bigdata
+    volumes:
+      - s3-data:/data
+
+volumes:
+  s3-data:
