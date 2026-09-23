@@ -1,0 +1,12 @@
+FROM apache/spark:3.5.4
+
+# Spark 3.5.4 ships Hadoop 3.3.4 but not its S3A connector or Iceberg runtime.
+RUN curl --fail --location --silent --show-error \
+      --output /opt/spark/jars/hadoop-aws-3.3.4.jar \
+      https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
+    && curl --fail --location --silent --show-error \
+      --output /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar \
+      https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar \
+    && curl --fail --location --silent --show-error \
+      --output /opt/spark/jars/iceberg-spark-runtime-3.5_2.12-1.6.0.jar \
+      https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.6.0/iceberg-spark-runtime-3.5_2.12-1.6.0.jar

@@ -1,0 +1,5 @@
+opencode-s3-observatory/.venv/
+opencode-s3-observatory/**/__pycache__/
+opencode-s3-observatory/local-exports/
+opencode-s3-observatory/session.json
+opencode-s3-observatory/session.parquet

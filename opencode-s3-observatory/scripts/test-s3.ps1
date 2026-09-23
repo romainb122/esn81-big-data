@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$FilePath = ".\exemple.txt",
+    [string]$FilePath = "",
     [string]$ObjectKey = ""
 )
 
@@ -10,6 +10,11 @@ $bucket = "bigdata"
 $accessKey = "admin"
 $secretKey = "bigdata-local-secret"
 $region = "us-east-1"
+$projectRoot = Split-Path -Parent $PSScriptRoot
+
+if ([string]::IsNullOrWhiteSpace($FilePath)) {
+    $FilePath = Join-Path $projectRoot "samples\exemple.txt"
+}
 
 function Invoke-Curl {
     param([string[]]$Arguments)
@@ -31,10 +36,10 @@ if ([string]::IsNullOrWhiteSpace($ObjectKey)) {
     $ObjectKey = Split-Path -Leaf $resolvedFile
 }
 
-$downloadPath = Join-Path $PSScriptRoot "telecharge-$([IO.Path]::GetFileName($ObjectKey))"
+$downloadPath = Join-Path $projectRoot "samples\telecharge-$([IO.Path]::GetFileName($ObjectKey))"
 $objectUrl = "$endpoint/$bucket/$([Uri]::EscapeDataString($ObjectKey))"
 
-Push-Location $PSScriptRoot
+Push-Location $projectRoot
 try {
     Write-Host "Demarrage de SeaweedFS..." -ForegroundColor Cyan
     docker compose up -d
@@ -59,7 +64,7 @@ try {
         throw "L'API S3 ne repond pas apres 30 secondes. Lancez 'docker compose logs s3'."
     }
 
-    $form = python "$PSScriptRoot/examples/post-policy.py" `
+    $form = python "$projectRoot/examples/post-policy.py" `
         --key $ObjectKey `
         --bucket $bucket `
         --access-key $accessKey `
