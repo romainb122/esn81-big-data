@@ -1,0 +1,19 @@
+:root {
+  --theme-color: #6ee7b7;
+  --sidebar-nav-link-color--active: #6ee7b7;
+}
+
+.cover {
+  background: linear-gradient(135deg, #0b1220, #12313b) !important;
+}
+
+.cover h1 a {
+  color: #f8fafc !important;
+}
+
+.sidebar-nav > ul > li > p {
+  color: #8f9aaa;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

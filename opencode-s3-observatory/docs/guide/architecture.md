@@ -110,9 +110,9 @@ Pour eviter de charger les contenus lourds au premier affichage, le dashboard
 lit d'abord un index Iceberg leger, sans prompts ni sorties d'outils. Dans la
 vue `Fil de discussion`, il charge ensuite 12 messages complets a la fois, du
 plus recent au plus ancien. Le bouton de chargement ajoute la page suivante de
-messages plus anciens. La page `Parcours de traitement` charge la session
-complete uniquement apres sa selection, car son graphe a besoin de toutes les
-etapes.
+messages plus anciens. Le bouton `Visualiser le flux de cette discussion`
+charge la session complete dans la page Flux, car son graphe a besoin de toutes
+les etapes.
 
 ## Spark batch
 

@@ -56,6 +56,14 @@ services:
       ICEBERG_URI: http://iceberg:8181
       SPARK_QUERY_URL: http://spark-query:4041
 
+  documentation:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8502:80"
+    volumes:
+      - ./docs:/usr/share/nginx/html:ro
+
   spark-query:
     image: esn81-big-data-spark:local
     build:

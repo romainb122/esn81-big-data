@@ -245,7 +245,7 @@ try:
     st.markdown("#### Explorer les donnees")
     page = st.radio(
         "Navigation principale",
-        ["Vue globale", "Fil de discussion", "Parcours de traitement", "Requetes Spark"],
+        ["Vue globale", "Fil de discussion", "Requetes Spark"],
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -368,51 +368,6 @@ try:
                 st.rerun()
         else:
             st.caption("Debut de la discussion atteint.")
-
-    elif page == "Parcours de traitement":
-        st.subheader("Parcours de traitement")
-        st.caption("Journal observable : demande, analyse, delegation, modification, verification et reponse. Ce n'est pas un raisonnement interne.")
-        selected_label = st.selectbox("Choisir une discussion", list(session_options), key="trace_session")
-        selected_session = session_options[selected_label]
-        selected = sessions.loc[sessions["session_id"] == selected_session].iloc[0]
-        trace = connection.execute(
-            """
-            SELECT *, to_timestamp(message_created_ms / 1000.0) AS created_at
-            FROM events
-            WHERE session_id = ?
-            ORDER BY message_created_ms, event_index
-            """,
-            [selected_session],
-        ).fetchdf()
-        calls = task_calls(trace)
-        completed = int(sum(call["status"] in ["completed", "success"] for call in calls))
-        first, second, third, fourth = st.columns(4)
-        first.metric("Agent", selected["agent"] or "OpenCode")
-        second.metric("Etapes", f"{trace['message_id'].nunique():,}")
-        third.metric("Sous-taches", f"{len(calls):,}")
-        fourth.metric("Sous-taches terminees", f"{completed:,}")
-
-        st.subheader("Etapes observees")
-        render_processing_trace(trace)
-
-        st.subheader("Iterations de l'agent")
-        loops = connection.execute(
-            """
-            SELECT
-              message_id,
-              min(to_timestamp(message_created_ms / 1000.0)) AS debut,
-              max(agent) AS agent,
-              count(*) FILTER (WHERE event_type = 'tool') AS operations,
-              string_agg(DISTINCT tool_name, ', ') FILTER (WHERE event_type = 'tool') AS outils,
-              string_agg(DISTINCT tool_status, ', ') FILTER (WHERE event_type = 'tool') AS statuts
-            FROM events
-            WHERE session_id = ?
-            GROUP BY message_id
-            ORDER BY min(message_created_ms), min(event_index)
-            """,
-            [selected_session],
-        ).fetchdf()
-        st.dataframe(loops, use_container_width=True, hide_index=True)
 
     else:
         st.subheader("Requetes Spark")
