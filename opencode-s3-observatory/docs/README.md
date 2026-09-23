@@ -7,13 +7,14 @@ ce dossier : aucune etape de compilation n'est necessaire.
 ## Parcours recommande
 
 1. [Architecture](guide/architecture.md) pour comprendre les composants et les
-   flux de donnees.
-2. [Gouvernance et garanties ACID](guide/data-governance.md) pour identifier la
-   source de verite, les couches Bronze/Silver/Gold et les contrats de donnees.
-3. [Sauvegardes OpenCode](operations/opencode-s3.md) pour installer et exploiter
-   l'export automatique.
-4. [ADR 0001](decisions/0001-iceberg-transaction-boundary.md) pour comprendre
-   la decision de faire d'Iceberg la frontiere transactionnelle.
+   responsabilites de chaque couche.
+2. [Flux de donnees](guide/data-flow.md) puis
+   [Formats et transformations](data/formats.md) pour suivre une session de la
+   source au navigateur.
+3. Les pages de la section `Composants` pour le fonctionnement detaille de S3,
+   Iceberg, Spark, DuckDB, Streamlit et de l'export.
+4. [Gouvernance et garanties ACID](guide/data-governance.md) pour les regles
+   d'evolution et les frontieres transactionnelles.
 
 ## Regle de mise a jour
 
