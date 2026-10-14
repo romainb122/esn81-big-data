@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements-iceberg-sink.txt ./
+RUN pip install --no-cache-dir -r requirements-iceberg-sink.txt kafka-python-ng==2.2.3
+
+COPY scripts/ /app/scripts/
+
+CMD ["python", "/app/scripts/consume-redpanda-iceberg.py"]

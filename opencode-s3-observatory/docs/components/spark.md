@@ -9,7 +9,8 @@ Iceberg.
 Le projet utilise deux applications Spark :
 
 - `spark-query` reste actif et execute le SQL envoye depuis le dashboard.
-- `spark-batch` demarre ponctuellement et construit les tables Gold.
+- `spark-batch` demarre ponctuellement, promeut Bronze vers Silver, puis
+  construit les tables Gold.
 
 ## Configuration actuelle : local[2]
 
@@ -52,10 +53,21 @@ Iceberg REST et le connecteur Hadoop S3A.
 
 ## Entrees et sorties
 
+```mermaid
+flowchart LR
+  DASH["Dashboard"] -->|"HTTP JSON<br/>SELECT / WITH"| QUERY["spark-query"]
+  QUERY -->|"lecture Iceberg"| SILVER["events Silver"]
+  QUERY -->|"HTTP JSON<br/>max. 500 lignes"| DASH
+  BRONZE["events_bronze"] -->|"Spark DataFrame"| BATCH["spark-batch"]
+  SILVER -->|"conserve les sessions<br/>non modifiees"| BATCH
+  BATCH -->|"createOrReplace"| SILVER
+  BATCH -->|"createOrReplace"| GOLD["tables Gold"]
+```
+
 | Application | Recoit | Produit |
 | --- | --- | --- |
 | `spark-query` | SQL de lecture en HTTP | JSON limite a 500 lignes |
-| `spark-batch` | snapshot `opencode.events` | snapshots Gold Iceberg |
+| `spark-batch` | snapshots Bronze et Silver | snapshots Silver et Gold Iceberg |
 
 Le service SQL accepte `SELECT`, `WITH`, `SHOW`, `DESCRIBE` et `EXPLAIN`. Il
 refuse les ecritures. Les noms publics `opencode.events`,

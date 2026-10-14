@@ -9,6 +9,7 @@ snapshot, soit le nouveau, jamais une ecriture partielle.
 Les tables du projet sont :
 
 - `opencode.events` : evenements actifs, couche Silver.
+- `opencode.events_bronze` : journal append-only des evenements Redpanda.
 - `opencode.session_summary` : agregats de sessions, couche Gold.
 - `opencode.tool_summary` : agregats d'outils, couche Gold.
 
@@ -25,10 +26,21 @@ snapshots pointent vers les objets S3 du warehouse `s3://bigdata/iceberg/`.
 
 ## Ce qu'Iceberg recoit et produit
 
-PyIceberg recoit une table Arrow pendant l'export et committe les evenements.
-Spark lit les metadonnees du catalogue, planifie un snapshot, puis lit seulement
-les fichiers necessaires. Spark batch ecrit de nouveaux snapshots dans les
-tables Gold.
+```mermaid
+flowchart LR
+  RP["Redpanda"] -->|"evenements JSON"| SINK["iceberg-sink"]
+  SINK -->|"append"| BRONZE["events_bronze"]
+  BRONZE -->|"derniere revision<br/>par session"| SPARK["spark-batch"]
+  SPARK -->|"snapshot atomique"| SILVER["events"]
+  SILVER -->|"agregations"| GOLD["session_summary<br/>tool_summary"]
+  BRONZE --> S3["Parquet + manifests S3"]
+  SILVER --> S3
+  GOLD --> S3
+```
+
+Le consommateur Redpanda transforme chaque lot en table Arrow et committe Bronze.
+Spark lit les metadonnees du catalogue, planifie un snapshot, puis promeut la
+derniere version de chaque session vers Silver et ecrit les tables Gold.
 
 Les fichiers Iceberg sont des Parquet de donnees, des manifests Avro et des
 fichiers de metadonnees JSON. Leur gestion est interne : les consommateurs

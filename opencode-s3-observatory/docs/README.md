@@ -1,4 +1,4 @@
-# Documentation OpenCode S3 Observatory
+# Documentation Conversation Observatory
 
 Le site de documentation est disponible localement sur
 `http://localhost:8502`. Il est servi par Docsify et les fichiers Markdown de
@@ -11,8 +11,8 @@ ce dossier : aucune etape de compilation n'est necessaire.
 2. [Flux de donnees](guide/data-flow.md) puis
    [Formats et transformations](data/formats.md) pour suivre une session de la
    source au navigateur.
-3. Les pages de la section `Composants` pour le fonctionnement detaille de S3,
-   Iceberg, Spark, DuckDB, Streamlit et de l'export.
+3. Les pages de la section `Composants` pour le fonctionnement detaille de
+   Redpanda, S3, Iceberg, Spark, DuckDB, Streamlit et de l'export.
 4. [Gouvernance et garanties ACID](guide/data-governance.md) pour les regles
    d'evolution et les frontieres transactionnelles.
 

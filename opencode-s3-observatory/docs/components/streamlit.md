@@ -26,6 +26,16 @@ via HTTP.
 
 ## Chargement des donnees
 
+```mermaid
+flowchart LR
+  BROWSER["Navigateur"] -->|"HTTP"| UI["Streamlit"]
+  UI -->|"PyIceberg / Arrow"| ICE["Iceberg Silver"]
+  UI -->|"DuckDB en memoire"| METRICS["metriques et listes"]
+  UI -->|"HTTP JSON SQL"| SPARK["spark-query"]
+  SPARK -->|"HTTP JSON"| UI
+  UI -->|"HTML"| BROWSER
+```
+
 Le dashboard charge un index Iceberg leger, mis en cache 60 secondes. Les champs
 lourds comme le texte et les sorties d'outils ne sont charges que pour les
 messages visibles du fil. Chaque page contient 12 messages.

@@ -1,39 +1,39 @@
-# OpenCode et export
+# Pi et export
 
 ## Role
 
-OpenCode est la source des conversations et traces visibles. Le pipeline
-d'export transforme ces donnees applicatives en artefacts exploitables par S3,
-Iceberg, DuckDB et Spark.
+Pi est la source des conversations et traces visibles. L'extension
+`pi/extensions/observatory-export.ts` utilise l'evenement `message_end` pour
+publier chaque message finalise directement vers Redpanda.
 
-## Lancement
+## Flux direct
 
-Le timer utilisateur `opencode-s3-export.timer` declenche l'export au demarrage
-et toutes les cinq minutes. Un export manuel est possible :
-
-```bash
-./scripts/export-opencode-conversations.sh --force
+```mermaid
+flowchart LR
+  PI["Pi"] -->|"hook message_end"| EXT["Extension pi"]
+  EXT -->|"HTTP REST immediat"| TOPIC["Redpanda<br/>opencode.events"]
+  TOPIC --> SINK["iceberg-sink"]
+  SINK --> BRONZE["Iceberg Bronze"]
 ```
 
-## Entree et sortie
+L'extension ignore les blocs `thinking` et les messages systeme. Elle publie
+les prompts, reponses visibles, appels d'outils et resultats d'outils. Une
+erreur Redpanda ne bloque pas la conversation pi.
 
 | Etape | Recoit | Produit |
 | --- | --- | --- |
-| `opencode export` | identifiant de session | JSON de session source |
-| `opencode-export-to-parquet.py` | JSON source | JSON visible et Parquet |
-| upload S3 | fichiers locaux temporaires | objets Bronze S3 |
-| `sync-opencode-iceberg.py` | Parquet local | snapshot `opencode.events` |
+| hook `message_end` | message pi finalise | evenements visibles |
+| `observatory-export.ts` | evenement pi | enregistrement REST Redpanda |
+| `iceberg-sink` | topic Redpanda | table Bronze Iceberg |
 
-Le script exclut les parties de type `reasoning`. Les prompts, reponses et
-sorties visibles restent en clair : les donnees doivent rester locales et
-privees.
+## Test
 
-## Observation
+Lancer pi depuis la racine du depot :
 
 ```bash
-systemctl --user status opencode-s3-export.timer
-journalctl --user -u opencode-s3-export.service -n 50 --no-pager
+pi
 ```
 
-La procedure complete d'installation et de reprise est dans
-[Sauvegardes OpenCode](../operations/opencode-s3.md).
+L'extension projet `.pi/extensions/observatory-export.ts` est alors chargee.
+Le script `scripts/pi-export-to-events.py` reste disponible pour rejouer ou
+importer un ancien fichier JSONL, mais il ne sert pas au flux normal.

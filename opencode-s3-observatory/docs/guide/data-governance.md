@@ -5,9 +5,9 @@
 Le projet utilise trois couches explicites. Elles ont des roles differents et
 ne doivent pas etre confondues.
 
-- Bronze, zone d'atterrissage : JSON et Parquet ecrits sous
-  `opencode-observatory/`. Ces fichiers sont utiles pour l'archive et la reprise
-  d'un export, mais ne constituent pas une table transactionnelle.
+- Bronze, journal d'atterrissage : table Iceberg append-only
+  `opencode.events_bronze`, alimentee par le topic Redpanda. Elle peut contenir
+  des reprises de lots et plusieurs revisions d'une meme session.
 - Silver, source analytique : table Iceberg `opencode.events`. Le dashboard et
   Spark SQL lisent cette table.
 - Gold, donnees derivees : tables Iceberg `opencode.session_summary` et
@@ -30,13 +30,13 @@ Les garanties suivantes s'appliquent a chaque ecriture dans une table Iceberg :
   catalogue REST conserve les references aux snapshots valides.
 
 Ces garanties ne signifient pas que tout le systeme est une transaction globale.
-L'envoi du JSON Bronze, du Parquet Bronze et le commit Iceberg sont des etapes
-distinctes. La table Iceberg est la source de verite pour les consommateurs.
+La publication Redpanda, le commit Bronze et la promotion Silver sont des etapes
+distinctes. La table Iceberg Silver est la source de verite pour les consommateurs.
 
 ## Frontieres transactionnelles
 
-- L'export d'une session committe atomiquement sa mise a jour dans
-  `opencode.events`.
+- Le sink committe le snapshot `opencode.events_bronze` avant son offset Kafka.
+- Spark publie atomiquement la version Silver complete des sessions rafraichies.
 - Le job Spark batch remplace atomiquement chaque table Gold complete avec
   `createOrReplace`. Les lecteurs voient soit la synthese precedente, soit la
   nouvelle synthese complete.
@@ -47,8 +47,8 @@ distinctes. La table Iceberg est la source de verite pour les consommateurs.
 
 ## Contrat de donnees
 
-Le schema des evenements est defini par
-`scripts/opencode-export-to-parquet.py`. Toute modification de ce schema doit :
+Le schema des evenements est defini par `scripts/opencode_event_schema.py`.
+Toute modification de ce schema doit :
 
 1. Preserver les champs utilises par le dashboard et les jobs Spark, ou migrer
    tous les consommateurs dans la meme modification.
@@ -68,7 +68,7 @@ production ne doit etre rendu public sans une politique de masquage.
   par le dashboard ni par le service Spark SQL.
 - Le service Spark SQL accepte seulement des requetes de lecture et limite les
   resultats a 500 lignes.
-- Avant une modification structurelle, ajouter un ADR dans `docs/adr/` avec le
+- Avant une modification structurelle, ajouter un ADR dans `docs/decisions/` avec le
   contexte, la decision, les consequences et le plan de migration.
 - Apres une evolution, verifier `docker compose config --quiet`, lancer les
   tests pertinents et mettre a jour les commandes de reprise si necessaire.

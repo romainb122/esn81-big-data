@@ -1,18 +1,70 @@
 :root {
-  --theme-color: #6ee7b7;
-  --sidebar-nav-link-color--active: #6ee7b7;
+  --theme-color: #0f766e;
+  --sidebar-nav-link-color--active: #0f766e;
+  --base-background-color: #f8fafc;
+  --base-color: #243244;
+  --sidebar-background: #f1f5f9;
+  --sidebar-nav-link-color: #475569;
+  --sidebar-nav-link-color--active: #0f766e;
+  --code-theme-background: #eff4f8;
 }
 
 .cover {
-  background: linear-gradient(135deg, #0b1220, #12313b) !important;
+  background:
+    radial-gradient(circle at 16% 20%, #bfdbfe 0, transparent 34%),
+    radial-gradient(circle at 82% 82%, #a7f3d0 0, transparent 30%),
+    linear-gradient(135deg, #f8fafc, #eaf4f2) !important;
 }
 
 .cover h1 a {
-  color: #f8fafc !important;
+  color: #173b3a !important;
+}
+
+.cover .cover-main > p:last-child a {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
+.cover .cover-main > p:last-child a:last-child {
+  background: transparent;
+  color: #0f766e;
+}
+
+.sidebar {
+  border-right: 1px solid #dbe4ee;
+}
+
+.sidebar-nav > ul > li > a {
+  font-weight: 650;
+}
+
+.markdown-section h1,
+.markdown-section h2,
+.markdown-section h3 {
+  color: #173b3a;
+}
+
+.markdown-section h2 {
+  border-bottom-color: #dbe4ee;
+}
+
+.markdown-section blockquote {
+  border-left-color: #2c7a72;
+  color: #475569;
+}
+
+.markdown-section .mermaid {
+  background: #fff;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  padding: 1rem;
 }
 
 .sidebar-nav > ul > li > p {
-  color: #8f9aaa;
+  color: #64748b;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;

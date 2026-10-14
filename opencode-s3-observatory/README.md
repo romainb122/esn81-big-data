@@ -1,8 +1,7 @@
-# OpenCode S3 Observatory
+# Conversation Observatory
 
-Application locale pour sauvegarder des sessions OpenCode dans SeaweedFS/S3,
-les convertir en Parquet et les explorer dans un dashboard Streamlit avec
-DuckDB.
+Application locale qui publie les evenements visibles des sessions pi dans Redpanda,
+les conserve dans Apache Iceberg sur SeaweedFS/S3 et les explore avec Streamlit.
 
 ## Demarrage rapide
 
@@ -15,7 +14,8 @@ docker compose up -d --build
 Ouvrir ensuite :
 
 - Dashboard : `http://localhost:8501`
-- API S3 : `http://localhost:8333`
+- Redpanda REST Proxy : `http://localhost:18082`
+- Catalogue Iceberg : `http://localhost:8181`
 - Documentation : `http://localhost:8502`
 
 Les identifiants S3 sont uniquement destines a la demonstration locale :
@@ -25,12 +25,10 @@ Les identifiants S3 sont uniquement destines a la demonstration locale :
 
 ```text
 app/                         Dashboard Streamlit
-scripts/                     Exports OpenCode et outils d'administration
+scripts/                     Publication pi et ingestion Iceberg
 docs/                        Site Docsify et documentation Markdown
-examples/                    Exemple de signature POST S3
-samples/                     Fichiers de test S3
-local-exports/               Archives telechargees localement, non versionnees
-docker-compose.yml           SeaweedFS et dashboard
+spark/                       Promotion Bronze vers Silver et tables Gold
+docker-compose.yml           Services du pipeline local
 ```
 
 ## Commandes courantes
@@ -41,17 +39,11 @@ docker compose ps
 docker compose logs -f dashboard
 docker compose logs -f documentation
 
-# Exporter tout de suite les sessions OpenCode modifiees
-./scripts/export-opencode-conversations.sh --force
+# Lancer pi depuis la racine du projet : l'extension est chargee automatiquement
+cd ..
+pi
 
-# Installer ou reconfigurer l'export automatique toutes les cinq minutes
-./scripts/install-opencode-export-timer.sh
-
-# Reconstruire la table Iceberg apres des exports de test repetes
-.venv/bin/python scripts/rebuild-opencode-iceberg.py
-./scripts/export-opencode-conversations.sh --force
-
-# Generer des syntheses batch Spark dans Iceberg
+# Promouvoir Bronze vers Silver et actualiser les tables Gold
 docker compose --profile spark run --build --rm spark-batch
 
 # Arreter les conteneurs sans supprimer les donnees S3
@@ -60,15 +52,15 @@ docker compose down
 
 ## Documentation
 
-- [Sauvegardes OpenCode et consultation des fichiers S3](docs/operations/opencode-s3.md)
+- [Export pi vers Redpanda](docs/operations/pi.md)
 - [Architecture de la chaine de donnees](docs/guide/architecture.md)
 - [Gouvernance des donnees et garanties ACID](docs/guide/data-governance.md)
 - [Index de la documentation](docs/README.md)
-- Test S3 sous PowerShell : `./scripts/test-s3.ps1`
 
-Les exports conservent les prompts, reponses, commandes et sorties visibles en
-clair. Les parties de raisonnement ne sont pas stockees. Le S3 doit rester
-local et prive, car un prompt ou une sortie de commande peut contenir un secret.
+L'extension pi publie directement les prompts, reponses, appels d'outils et
+sorties visibles dans Redpanda. Les blocs thinking ne sont pas publies. Redpanda, S3 et les
+logs doivent rester locaux et prives, car un prompt ou une sortie de commande
+peut contenir un secret.
 
 ## Vues du dashboard
 
@@ -77,19 +69,16 @@ Le dashboard propose trois vues explicites :
 - `Vue globale` : volumes, couts, tokens, modeles et outils utilises.
 - `Fil de discussion` : prompts, reponses et operations d'une session dans
   l'ordre chronologique.
-- `Requetes Spark` : requetes SQL de lecture executees par Spark sur les
-  fichiers Parquet S3.
+- `Requetes Spark` : requetes SQL de lecture executees par Spark sur Iceberg.
 
 Le bouton du `Fil de discussion` ouvre le flux interactif de la session.
 
 ## Traitement batch Spark
 
-Le service optionnel `spark-batch` lit la table transactionnelle
-`opencode.events` et ecrit les tables Iceberg `opencode.session_summary` et
-`opencode.tool_summary`. Elles regroupent les sessions, tokens, couts et appels
-d'outils sans reprendre les prompts ni les sorties. Le dashboard conserve son
-acces interactif DuckDB/Iceberg ; Spark est reserve aux traitements batch
-executes a la demande.
+Le service optionnel `spark-batch` promeut `opencode.events_bronze` vers
+`opencode.events`, puis ecrit les tables Iceberg `opencode.session_summary` et
+`opencode.tool_summary`. Le dashboard conserve son acces interactif
+DuckDB/Iceberg ; Spark est reserve aux traitements batch executes a la demande.
 
 ## Requetes Spark
 

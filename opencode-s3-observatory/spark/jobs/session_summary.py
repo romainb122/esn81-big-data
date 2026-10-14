@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build transactional OpenCode summaries from the Iceberg events table."""
+"""Build transactional conversation summaries from the Iceberg events table."""
 
 import argparse
 import os

@@ -35,6 +35,83 @@ services:
     volumes:
       - iceberg-catalog-data:/var/lib/iceberg
 
+  redpanda:
+    image: redpandadata/redpanda:v26.2.3
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - INTERNAL://redpanda:9092,EXTERNAL://localhost:19092
+      - --pandaproxy-addr
+      - INTERNAL://0.0.0.0:8082,EXTERNAL://0.0.0.0:18082
+      - --advertise-pandaproxy-addr
+      - INTERNAL://redpanda:8082,EXTERNAL://localhost:18082
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:19092:19092"
+      - "127.0.0.1:18082:18082"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health -X brokers=localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redpanda-init:
+    image: redpandadata/redpanda:v26.2.3
+    entrypoint: ["rpk"]
+    command:
+      - topic
+      - create
+      - --if-not-exists
+      - --partitions
+      - "1"
+      - --replicas
+      - "1"
+      - -X
+      - brokers=redpanda:9092
+      - opencode.events
+    restart: on-failure
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  iceberg-sink:
+    build:
+      context: .
+      dockerfile: Dockerfile.elt
+    restart: unless-stopped
+    depends_on:
+      iceberg:
+        condition: service_started
+      s3:
+        condition: service_started
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      REDPANDA_BROKERS: redpanda:9092
+      REDPANDA_TOPIC: opencode.events
+      REDPANDA_CONSUMER_GROUP: opencode-iceberg-bronze
+      ICEBERG_URI: http://iceberg:8181
+      S3_ENDPOINT: http://s3:8333
+      S3_BUCKET: bigdata
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: bigdata-local-secret
+      AWS_REGION: us-east-1
+
   dashboard:
     build:
       context: .
@@ -52,7 +129,6 @@ services:
       AWS_ACCESS_KEY_ID: admin
       AWS_SECRET_ACCESS_KEY: bigdata-local-secret
       AWS_REGION: us-east-1
-      S3_PREFIX: opencode-conversations/sessions/
       ICEBERG_URI: http://iceberg:8181
       SPARK_QUERY_URL: http://spark-query:4041
 
@@ -104,10 +180,12 @@ services:
       - /opt/spark/bin/spark-submit
       - --master
       - local[2]
-      - /opt/spark-apps/session_summary.py
+      - /opt/spark-apps/refresh_analytics.py
 
 volumes:
   s3-data:
     name: esn81-big-data_s3-data
   iceberg-catalog-data:
     name: esn81-big-data_iceberg-catalog-data
+  redpanda-data:
+    name: esn81-big-data_redpanda-data

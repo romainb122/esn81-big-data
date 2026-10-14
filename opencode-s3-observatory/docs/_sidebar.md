@@ -6,7 +6,8 @@
   - [Gouvernance et ACID](guide/data-governance.md)
 
 - Composants
-  - [OpenCode et export](components/export.md)
+  - [Pi et export](components/export.md)
+  - [Redpanda](components/redpanda.md)
   - [SeaweedFS et S3](components/seaweedfs-s3.md)
   - [Apache Iceberg](components/iceberg.md)
   - [Apache Spark](components/spark.md)
@@ -17,7 +18,7 @@
   - [Formats et transformations](data/formats.md)
 
 - Exploitation
-  - [Sauvegardes OpenCode](operations/opencode-s3.md)
+  - [Export pi](operations/pi.md)
 
 - Decisions
   - [ADR 0001 : Frontiere Iceberg](decisions/0001-iceberg-transaction-boundary.md)

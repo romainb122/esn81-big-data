@@ -1,70 +1,55 @@
 # Formats et transformations de donnees
 
-## Pourquoi plusieurs formats
-
-Chaque brique travaille avec le format le plus adapte a son role. Le JSON est
-pratique pour archiver et relire une session. Le Parquet est efficace pour les
-analyses colonne par colonne. Arrow et les DataFrames servent aux echanges en
-memoire. Iceberg ajoute une couche de metadonnees transactionnelles aux fichiers
-de donnees.
-
 ## Formats du projet
 
 | Format | Utilisation | Producteur | Consommateur |
 | --- | --- | --- | --- |
-| JSON OpenCode | resultat source temporaire | OpenCode CLI | script export |
-| JSON visible | archive Bronze lisible | export Python | utilisateur, S3 |
-| Parquet Bronze | une ligne par evenement | PyArrow | PyIceberg, reprise |
-| Arrow Table | donnees colonne en memoire | PyIceberg | DuckDB, Streamlit |
-| Spark DataFrame | plan de calcul distribue | Spark | Spark SQL, batch |
+| JSONL de session pi | journal local source | Pi | extension ou outil de rejeu |
+| JSON REST | publication d'un evenement | extension pi | Redpanda |
+| Arrow Table | donnees en memoire | PyIceberg | DuckDB, Streamlit |
+| Spark DataFrame | calcul analytique | Spark | Spark SQL, batch |
 | DataFrame Pandas | resultat interactif local | DuckDB | Streamlit |
 | JSON HTTP | requete et resultat Spark SQL | Streamlit, spark-query | Streamlit |
-| Parquet Iceberg | fichiers de donnees Silver et Gold | PyIceberg, Spark | Iceberg |
-| Avro et JSON Iceberg | manifests et metadonnees de snapshot | Iceberg | catalogue et moteurs |
+| Parquet Iceberg | donnees Bronze, Silver et Gold | PyIceberg, Spark | Iceberg |
+| Avro et JSON Iceberg | manifests et snapshots | Iceberg | catalogue et moteurs |
 
 ## Transformation complete
 
 ```text
-JSON OpenCode source
-  -> JSON visible archive
-  -> Parquet Bronze
+Pi hook message_end
+  -> evenement JSON visible
+  -> topic Redpanda
   -> Arrow Table
-  -> snapshot Iceberg et Parquet Silver
-  -> Spark DataFrame ou Arrow/DuckDB
-  -> DataFrame Pandas ou JSON HTTP
+  -> snapshot Iceberg Bronze
+  -> Spark : Silver puis Gold
+  -> Arrow/DuckDB ou Spark SQL
   -> navigateur
 ```
 
-## JSON
+## Evenements JSON
 
-Le JSON visible conserve la structure d'une session pour une lecture humaine :
-messages, parties de texte, appels d'outils et sorties visibles. Il n'est pas la
-source utilisee pour les analyses SQL. Les parties `reasoning` sont retirees
-avant son ecriture.
+Chaque evenement porte notamment `session_id`, `message_id`, `event_id`,
+`event_type`, `role`, `content`, `tool_name`, les tokens et le cout. Les appels
+et sorties d'outils sont conserves afin de reconstruire le flux d'execution.
+Les blocs `thinking` et les messages systeme sont exclus par l'extension.
 
-## Parquet
+Le JSON est transporte par l'API REST Redpanda. Il n'est pas lu directement par
+le dashboard.
 
-Le Parquet Bronze contient une ligne par evenement et des colonnes comme
-`session_id`, `message_id`, `event_type`, `content`, `tool_name`, tokens et
-couts. Son format colonnaire permet de ne lire que les colonnes utiles pour une
-requete.
+## Parquet et Iceberg
 
-Iceberg ecrit aussi des Parquet, mais ces fichiers font partie d'une table et
-doivent etre lus via Iceberg. Lire des fichiers individuels dans le dossier
-Iceberg contournerait les snapshots et les garanties de coherence.
+Iceberg utilise Parquet pour les fichiers physiques. Ces fichiers font partie
+d'une table versionnee et doivent etre lus via Iceberg, jamais directement dans
+le warehouse S3 : sinon les snapshots et la coherence seraient contournes.
 
-## Arrow, Pandas et Spark DataFrame
+Bronze conserve les lots recus. Spark produit ensuite la table Silver active et
+les tables Gold de synthese.
 
-Arrow est un format colonne en memoire sans copie inutile entre PyIceberg et
-DuckDB. DuckDB transforme ses resultats en DataFrames Pandas, adaptes aux
-composants Streamlit.
+## Donnees en memoire et SQL
 
-Un Spark DataFrame represente un calcul distribue paresseux : Spark ne lit pas
-les fichiers au moment de la declaration, mais lors d'une action comme
-`collect()` ou une ecriture Iceberg.
+PyIceberg charge les colonnes necessaires en Arrow. DuckDB les analyse en
+memoire et renvoie des DataFrames Pandas a Streamlit.
 
-## SQL et HTTP JSON
-
-Le SQL est le langage fourni par l'utilisateur dans l'onglet Spark. Streamlit
-l'envoie dans un objet JSON HTTP au service `spark-query`. Le service retourne
-les colonnes et lignes du resultat dans un JSON, avec une limite de 500 lignes.
+Pour les requetes Spark, Streamlit envoie du SQL dans un objet JSON HTTP a
+`spark-query`. Le service accepte uniquement les requetes de lecture et limite
+les resultats a 500 lignes.

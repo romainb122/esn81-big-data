@@ -2,36 +2,41 @@
 
 ## 1. Capture et export
 
-Le timer systemd lance `scripts/export-opencode-conversations.sh` toutes les
-cinq minutes. Le script identifie les sessions OpenCode modifiees et execute
-`opencode export` pour chacune.
-
-`scripts/opencode-export-to-parquet.py` retire les parties `reasoning`, puis
-produit un JSON visible et un Parquet d'evenements. Les fichiers sont envoyes
-dans le bucket S3 `bigdata`.
+L'extension pi ecoute `message_end`. A chaque message finalise, elle retire les
+blocs `thinking` et publie immediatement les evenements visibles dans Redpanda.
+Les scripts `pi-export-to-events.py` et `publish-events.py` sont reserves au
+rejeu ou a l'import manuel.
 
 ```text
-OpenCode export JSON
-  -> nettoyage des parties reasoning
-  -> JSON visible + Parquet d'evenements
-  -> SeaweedFS/S3, couche Bronze
+Hook pi `message_end`
+  -> nettoyage des blocs thinking
+  -> POST REST /topics/opencode.events
+  -> topic Redpanda
 ```
 
-## 2. Publication transactionnelle
+## 2. Ingestion Bronze
 
-Apres l'upload Bronze, `scripts/sync-opencode-iceberg.py` lit le Parquet et
-committe la session dans `opencode.events`. Le commit Iceberg publie un nouveau
-snapshot atomiquement. Si cette etape echoue, les lecteurs restent sur le
-snapshot precedent.
+`iceberg-sink` consomme le topic avec le groupe
+`opencode-iceberg-bronze`. Il ajoute chaque lot dans
+`opencode.events_bronze`, puis committe son offset Redpanda seulement apres le
+commit du snapshot Iceberg. Une interruption avant ce commit peut rejouer un
+lot : Bronze est donc un journal append-only.
 
 ```text
-Parquet Bronze
+Topic Redpanda
   -> PyArrow Table
-  -> PyIceberg overwrite de la session
-  -> snapshot opencode.events, couche Silver
+  -> PyIceberg append
+  -> snapshot opencode.events_bronze, couche Bronze
 ```
 
-## 3. Consultation interactive
+## 3. Promotion Silver
+
+Le premier etage de `spark-batch` prend, pour chaque session, les evenements du
+plus recent `exported_at_ms`, deduplique `event_id`, puis publie un nouveau
+snapshot de `opencode.events`. Les consommateurs voient donc soit la version
+Silver precedente, soit la version complete apres promotion.
+
+## 4. Consultation interactive
 
 Streamlit charge depuis Iceberg un index leger sans texte ni sorties d'outils.
 DuckDB le transforme en vue temporaire pour produire les metriques et listes de
@@ -45,13 +50,13 @@ Iceberg snapshot
   -> DataFrame et composants Streamlit
 ```
 
-## 4. Requetes et batch Spark
+## 5. Requetes et batch Spark
 
 Le dashboard envoie le SQL a `spark-query`. Ce service lit le snapshot Iceberg,
 execute la requete et renvoie au dashboard un resultat JSON limite a 500 lignes.
 
-Le job `spark-batch` lit lui aussi `opencode.events`. Il agrege les sessions et
-outils, puis publie des snapshots dans les tables Gold.
+Le second etage de `spark-batch` lit `opencode.events`. Il agrege les sessions
+et outils, puis publie des snapshots dans les tables Gold.
 
 ```text
 opencode.events
@@ -61,6 +66,6 @@ opencode.events
 
 ## Fraicheur des donnees
 
-`opencode.events` est a jour apres le prochain export de session. Les tables
-Gold sont a jour apres le prochain lancement de `spark-batch`. Elles peuvent
-donc etre temporairement en retard par rapport a la table Silver.
+Bronze est a jour apres le commit du consommateur Redpanda. Silver et Gold sont
+a jour apres le prochain lancement de `spark-batch`; elles peuvent donc etre
+temporairement en retard par rapport a Bronze.

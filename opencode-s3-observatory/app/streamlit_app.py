@@ -47,7 +47,7 @@ def show_event(event):
         return
 
     if event["event_type"] == "text" and event["content"]:
-        author = "Vous" if event["role"] == "user" else "OpenCode"
+        author = "Vous" if event["role"] == "user" else "Pi"
         with st.chat_message("user" if event["role"] == "user" else "assistant"):
             st.caption(f"{author} - {timestamp}")
             st.markdown(event["content"])
@@ -57,7 +57,7 @@ def show_event(event):
 
 
 def task_calls(trace):
-    """Extract OpenCode task delegations recorded in tool events."""
+    """Extract pi task delegations recorded in tool events."""
     calls = []
     for event in trace.loc[(trace["event_type"] == "tool") & (trace["tool_name"] == "task")].to_dict("records"):
         try:
@@ -67,7 +67,7 @@ def task_calls(trace):
         calls.append(
             {
                 "parent_message_id": event["message_id"],
-                "parent_agent": event["agent"] or "OpenCode",
+                "parent_agent": event["agent"] or "Pi",
                 "subagent": task.get("subagent_type", "inconnu"),
                 "objectif": task.get("description", "Sans description"),
                 "prompt": task.get("prompt"),
@@ -136,7 +136,7 @@ def render_processing_trace(trace):
         if not phase_events and not responses:
             continue
         with st.container(border=True):
-            st.caption(f"{timestamp} - Etape executee par {events[0]['agent'] or 'OpenCode'}")
+            st.caption(f"{timestamp} - Etape executee par {events[0]['agent'] or 'Pi'}")
             for (phase_name, phase_description), phase_items in phase_events.items():
                 labels = []
                 for event in phase_items:
@@ -163,9 +163,9 @@ def render_processing_trace(trace):
                     st.markdown(response["content"])
 
 
-st.set_page_config(page_title="OpenCode Observatory", page_icon="O", layout="wide")
+st.set_page_config(page_title="Conversation Observatory", page_icon="O", layout="wide")
 apply_design()
-hero("Observatoire local", "OpenCode Observatory", "Conversations, agents et operations versionnes dans Iceberg puis analyses avec DuckDB.")
+hero("Observatoire local", "Conversation Observatory", "Conversations, agents et operations versionnes dans Iceberg puis analyses avec DuckDB.")
 
 with st.sidebar:
     st.header("Donnees")
@@ -182,8 +182,8 @@ except Exception as error:
     st.stop()
 
 if events is None or events.num_rows == 0:
-    st.info("Aucun evenement Iceberg. Lancez un export force pour initialiser la table.")
-    st.code("./scripts/export-opencode-conversations.sh --force", language="bash")
+    st.info("Aucun evenement Iceberg. Lancez un export pi pour initialiser la table.")
+    st.code("./scripts/export-pi-conversations.sh", language="bash")
     st.stop()
 
 connection = duckdb.connect()
@@ -371,7 +371,7 @@ try:
 
     else:
         st.subheader("Requetes Spark")
-        st.caption("Ecrire une requete SQL de lecture. Spark lit les Parquet OpenCode depuis S3 et renvoie au plus 500 lignes.")
+        st.caption("Ecrire une requete SQL de lecture. Spark lit les Parquet de conversations depuis S3 et renvoie au plus 500 lignes.")
         statement = st.text_area(
             "SQL",
             value="""SELECT tool_name, count(*) AS executions\nFROM events\nWHERE event_type = 'tool'\nGROUP BY tool_name\nORDER BY executions DESC""",

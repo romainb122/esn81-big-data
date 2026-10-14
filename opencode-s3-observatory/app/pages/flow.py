@@ -121,7 +121,7 @@ def build_flow(events):
                 "shape": "square",
                 "color": PHASE_COLORS.get(phases[0], "#475569") if phases else "#475569",
                 "hover": (
-                    f"<b>Agent: {first['agent'] or 'OpenCode'}</b><br>"
+                    f"<b>Agent: {first['agent'] or 'Pi'}</b><br>"
                     f"Etapes: {', '.join(phases) or 'operation'}<br>"
                     f"Tokens de l'etape: {tokens:,}<br>Cout de l'etape: ${cost:,.4f}<extra></extra>"
                 ),
