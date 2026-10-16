@@ -32,6 +32,7 @@ EVENT_METADATA_FIELDS = (
     "tool_name",
     "tool_title",
     "tool_status",
+    "content",
 )
 
 
@@ -55,20 +56,32 @@ def iceberg_literal(value):
     return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
-@st.cache_data(ttl=60, show_spinner="Lecture de l'index Iceberg dans S3...")
+@st.cache_data(ttl=2, show_spinner="Lecture de l'index Iceberg dans S3...")
 def load_event_metadata():
-    """Load only the lightweight columns needed to browse sessions."""
+    """Load lightweight columns from the live Bronze journal."""
     try:
-        return iceberg_catalog().load_table("opencode.events").scan(selected_fields=EVENT_METADATA_FIELDS).to_arrow()
+        return iceberg_catalog().load_table("opencode.events_bronze").scan(selected_fields=EVENT_METADATA_FIELDS).to_arrow()
     except NoSuchTableError:
         return None
 
 
-@st.cache_data(ttl=60, show_spinner="Chargement des messages...")
+@st.cache_data(ttl=2, show_spinner=False)
+def load_event_metadata_since(exported_at_ms):
+    """Read only recent Bronze rows after the initial dashboard load."""
+    try:
+        return iceberg_catalog().load_table("opencode.events_bronze").scan(
+            selected_fields=EVENT_METADATA_FIELDS,
+            row_filter=f"exported_at_ms >= {int(exported_at_ms)}",
+        ).to_arrow()
+    except NoSuchTableError:
+        return None
+
+
+@st.cache_data(ttl=2, show_spinner="Chargement des messages...")
 def load_thread_page(session_id, message_ids):
-    """Load complete event data only for one visible page of messages."""
+    """Load complete live event data for one visible page of messages."""
     if not message_ids:
         return None
     quoted_ids = ", ".join(iceberg_literal(message_id) for message_id in message_ids)
     row_filter = f"session_id = {iceberg_literal(session_id)} AND message_id IN ({quoted_ids})"
-    return iceberg_catalog().load_table("opencode.events").scan(row_filter=row_filter).to_arrow()
+    return iceberg_catalog().load_table("opencode.events_bronze").scan(row_filter=row_filter).to_arrow()

@@ -7,9 +7,9 @@ sur `http://localhost:8501`. Il presente les donnees sans les modifier.
 
 Les vues actuelles sont :
 
-- `Vue globale` : couts, tokens, modeles et outils.
-- `Fil de discussion` : messages et outils par pages, du plus recent au plus
-  ancien.
+- `Vue d'ensemble` : indicateurs, comparaison des modèles et harnais, activité
+  dans le temps et outils.
+- `Discussion` : messages et outils par pages, du plus récent au plus ancien.
 - `Requetes Spark` : editeur SQL execute par le service Spark interne.
 
 Le bouton `Visualiser le flux de cette discussion` ouvre la page Plotly de flux
@@ -29,18 +29,19 @@ via HTTP.
 ```mermaid
 flowchart LR
   BROWSER["Navigateur"] -->|"HTTP"| UI["Streamlit"]
-  UI -->|"PyIceberg / Arrow"| ICE["Iceberg Silver"]
+  UI -->|"PyIceberg / Arrow"| ICE["Iceberg Bronze<br/>aperçu direct"]
   UI -->|"DuckDB en memoire"| METRICS["metriques et listes"]
   UI -->|"HTTP JSON SQL"| SPARK["spark-query"]
   SPARK -->|"HTTP JSON"| UI
   UI -->|"HTML"| BROWSER
 ```
 
-Le dashboard charge un index Iceberg leger, mis en cache 60 secondes. Les champs
+Le dashboard déduit le harnais à partir de l'identifiant de session (`ses_` pour OpenCode, autres identifiants pour Pi). Il charge un index Iceberg Bronze léger, mis en cache 60 secondes.
+Les champs
 lourds comme le texte et les sorties d'outils ne sont charges que pour les
 messages visibles du fil. Chaque page contient 12 messages.
 
-Cette separation limite les transferts S3 et evite de rendre toute une longue
+Cette séparation limite les transferts S3 et évite de rendre toute une longue
 discussion au premier affichage. La page Flux charge la session complete
 uniquement parce que son graphe a besoin de toutes les etapes.
 

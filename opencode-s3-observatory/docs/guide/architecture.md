@@ -17,7 +17,7 @@ flowchart LR
   SINK -->|"PyIceberg<br/>commit snapshot"| BRONZE["Iceberg Bronze<br/>events_bronze"]
   BRONZE -->|"Spark batch"| SILVER["Iceberg Silver<br/>events"]
   SILVER -->|"Spark batch"| GOLD["Iceberg Gold<br/>summaries"]
-  SILVER -->|"Arrow / PyIceberg"| DASH["Dashboard<br/>Streamlit + DuckDB"]
+  BRONZE -->|"Arrow / PyIceberg<br/>aperçu temps réel"| DASH["Dashboard<br/>Streamlit + DuckDB"]
   DASH -->|"HTTP JSON SQL"| QUERY["spark-query"]
   QUERY -->|"Iceberg scan"| SILVER
   SINK -->|"S3 API<br/>Parquet + manifests"| S3["SeaweedFS / S3"]
@@ -31,15 +31,15 @@ fichiers physiques des tables.
 
 ```text
 Pi
-  -> export automatique systemd
-  -> JSONL d'evenements visibles
+  -> extension `message_end`
+  -> événements JSON visibles
   -> API REST Redpanda, topic opencode.events
   -> consommateur Kafka -> table Iceberg Bronze
   -> Spark -> table Iceberg Silver transactionnelle
 
 Dashboard Streamlit
-  -> PyIceberg lit un snapshot Silver
-  -> DuckDB execute les analyses interactives
+  -> PyIceberg lit le journal Bronze en direct
+  -> DuckDB déduplique et execute les analyses interactives
   -> navigateur :8501
 
 Spark SQL et batch
@@ -69,8 +69,9 @@ decrits dans [Formats et transformations](../data/formats.md).
 
 - Bronze : table Iceberg append-only `opencode.events_bronze`, alimentee par le
   topic Redpanda. Elle conserve les revisions publiees des sessions.
-- Silver : table Iceberg `opencode.events`. C'est la source de verite pour le
-  dashboard et Spark SQL.
+- Silver : table Iceberg `opencode.events`. C'est la source de verite pour Spark
+  SQL et les traitements analytiques. Le dashboard lit Bronze pour afficher les
+  derniers événements immédiatement, puis déduplique localement.
 - Gold : tables Iceberg `opencode.session_summary` et
   `opencode.tool_summary`, construites par Spark batch.
 
@@ -93,7 +94,9 @@ detail.
 
 ## Regle d'architecture
 
-Un consommateur analytique lit une table Iceberg, jamais le topic ni les
-fichiers de son warehouse directement. Une ecriture analytique durable est
+Un consommateur lit une table Iceberg, jamais le topic ni les fichiers de son
+warehouse directement. Le dashboard utilise Bronze comme aperçu opérationnel
+pour éviter d'attendre le batch Silver ; les analyses Spark utilisent Silver.
+Une ecriture analytique durable est
 publiee dans Iceberg. Cette regle maintient une lecture par snapshots coherents
 lorsque le projet evolue.

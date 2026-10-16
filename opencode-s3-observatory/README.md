@@ -39,8 +39,11 @@ docker compose ps
 docker compose logs -f dashboard
 docker compose logs -f documentation
 
-# Lancer pi depuis la racine du projet : l'extension est chargee automatiquement
-cd ..
+# Installer l'extension pi en temps réel
+chmod +x scripts/install-pi-extension.sh
+./scripts/install-pi-extension.sh
+
+# Puis lancer ou recharger pi
 pi
 
 # Promouvoir Bronze vers Silver et actualiser les tables Gold
@@ -66,7 +69,14 @@ peut contenir un secret.
 
 Le dashboard propose trois vues explicites :
 
-- `Vue globale` : volumes, couts, tokens, modeles et outils utilises.
+- `Vue d'ensemble` : volumes, coûts, tokens, comparaison historique des modèles et des harnais, activité dans le temps et outils utilisés.
+- `Comparateur technique` : exécutions du même prompt et comparaison des métriques disponibles.
+
+Lancer une comparaison technique :
+
+```bash
+./scripts/run-technical-comparison.sh "Explique le fonctionnement de Kafka"
+```
 - `Fil de discussion` : prompts, reponses et operations d'une session dans
   l'ordre chronologique.
 - `Requetes Spark` : requetes SQL de lecture executees par Spark sur Iceberg.
@@ -75,10 +85,11 @@ Le bouton du `Fil de discussion` ouvre le flux interactif de la session.
 
 ## Traitement batch Spark
 
-Le service optionnel `spark-batch` promeut `opencode.events_bronze` vers
-`opencode.events`, puis ecrit les tables Iceberg `opencode.session_summary` et
-`opencode.tool_summary`. Le dashboard conserve son acces interactif
-DuckDB/Iceberg ; Spark est reserve aux traitements batch executes a la demande.
+Le dashboard lit Bronze pour afficher les nouveaux messages immediatement et
+les deduplique avec DuckDB. Le service optionnel `spark-batch` promeut
+`opencode.events_bronze` vers `opencode.events`, puis ecrit les tables Iceberg
+`opencode.session_summary` et `opencode.tool_summary`. Spark reste reserve aux
+traitements analytiques et aux requetes SQL.
 
 ## Requetes Spark
 

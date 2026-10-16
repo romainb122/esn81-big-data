@@ -8,13 +8,15 @@ ne doivent pas etre confondues.
 - Bronze, journal d'atterrissage : table Iceberg append-only
   `opencode.events_bronze`, alimentee par le topic Redpanda. Elle peut contenir
   des reprises de lots et plusieurs revisions d'une meme session.
-- Silver, source analytique : table Iceberg `opencode.events`. Le dashboard et
-  Spark SQL lisent cette table.
+- Silver, source analytique : table Iceberg `opencode.events`. Spark SQL et les
+  traitements batch lisent cette table. Le dashboard lit Bronze pour rester à
+  jour immédiatement et déduplique les événements en mémoire.
 - Gold, donnees derivees : tables Iceberg `opencode.session_summary` et
   `opencode.tool_summary`, produites par le job Spark batch.
 
-Un consommateur analytique ne doit pas lire la couche Bronze directement. Il
-doit lire une table Iceberg Silver ou Gold.
+Les traitements analytiques et les requêtes Spark ne doivent pas lire Bronze
+directement : ils utilisent Silver ou Gold. Le dashboard fait exception pour
+son aperçu opérationnel temps réel et applique la déduplication localement.
 
 ## Garanties ACID
 

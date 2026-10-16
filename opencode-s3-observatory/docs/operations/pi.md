@@ -1,55 +1,60 @@
-# Export pi vers Redpanda
+# Intégration pi en temps réel
 
-L'export est fait **en direct par une extension pi**, et non par un timer. Le
-hook `message_end` publie chaque message finalise dans le topic existant
-`opencode.events` : prompts, texte visible, appels d'outils et resultats.
+L'extension `pi/extensions/observatory-export.ts` écoute le hook `message_end`.
+Chaque message finalisé est envoyé immédiatement à Redpanda. Les blocs
+`thinking` et les messages système sont exclus.
 
-Les blocs `thinking` et les messages systeme ne sont jamais publies. Si
-Redpanda est indisponible, pi continue sa conversation et signale l'erreur dans
-sa sortie standard ; une strategie de rejeu pourra ensuite etre ajoutee sans
-modifier l'infrastructure aval.
+## Installation recommandée
 
-## Activation
+Installe l'extension au niveau utilisateur afin qu'elle soit disponible dans
+toutes les sessions pi :
 
-L'extension est versionnee dans le projet :
+```bash
+cd /home/romain/bigdata/esn81-big-data/opencode-s3-observatory
+chmod +x scripts/install-pi-extension.sh
+./scripts/install-pi-extension.sh
+```
+
+Le script crée ce lien :
 
 ```text
-.pi/extensions/observatory-export.ts
+~/.pi/agent/extensions/conversation-observatory.ts
 ```
 
-Depuis la racine du depot, lancer pi normalement :
+L'extension utilise par défaut :
 
-```bash
-cd /home/romain/bigdata/esn81-big-data
-pi
+```text
+Redpanda REST : http://localhost:18082
+topic         : opencode.events
 ```
 
-Si le projet demande une confirmation de confiance, accepter le chargement des
-extensions du projet. Pour un test explicite :
+Ces valeurs peuvent être changées avec `REDPANDA_PROXY_URL` et
+`REDPANDA_TOPIC`.
+
+## Activer une session
+
+Après l'installation :
+
+- redémarrer Pi ; ou
+- exécuter `/reload` dans une session déjà ouverte.
+
+Pour vérifier que l'extension est active, envoyer un message puis surveiller :
 
 ```bash
-pi --extension ./opencode-s3-observatory/pi/extensions/observatory-export.ts
-```
-
-## Verification en direct
-
-Dans un autre terminal :
-
-```bash
-cd opencode-s3-observatory
+cd /home/romain/bigdata/esn81-big-data/opencode-s3-observatory
 docker compose logs -f iceberg-sink
 ```
 
-Puis envoyer un message dans pi. Le sink doit afficher un nouvel ajout Bronze
-immediatement, sans attendre cinq minutes. Pour publier la Silver et les
-agregats :
+Un nouvel ajout Bronze doit apparaître immédiatement. Le dashboard lit Bronze
+pour afficher les événements récents, sans attendre le batch Spark.
+
+## Vérifier les données analytiques
+
+Silver et Gold sont mises à jour à la demande :
 
 ```bash
 docker compose --profile spark run --rm spark-batch
 ```
 
-Les endpoints locaux sont : dashboard `http://localhost:8501`, documentation
-`http://localhost:8502`, Redpanda REST `http://localhost:18082`.
-
-Les prompts et sorties peuvent contenir des secrets : toute l'infrastructure
-reste locale et privee.
+Le script `pi-export-to-events.py` reste disponible uniquement pour rejouer une
+session historique ou récupérer des événements après une interruption.

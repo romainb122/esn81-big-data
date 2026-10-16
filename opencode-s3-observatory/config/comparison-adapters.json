@@ -1,0 +1,16 @@
+{
+  "adapters": [
+    {
+      "harness": "Pi",
+      "provider": "openai-codex",
+      "model": "default",
+      "command": ["pi", "--no-session", "--no-tools", "--mode", "json", "--print"]
+    },
+    {
+      "harness": "OpenCode",
+      "provider": "openai",
+      "model": "default",
+      "command": ["opencode", "run", "--pure", "--format", "json", "--agent", "plan"]
+    }
+  ]
+}

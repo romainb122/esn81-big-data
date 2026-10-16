@@ -38,7 +38,9 @@ Silver precedente, soit la version complete apres promotion.
 
 ## 4. Consultation interactive
 
-Streamlit charge depuis Iceberg un index leger sans texte ni sorties d'outils.
+Streamlit charge directement depuis la table Iceberg Bronze un index léger afin
+d'afficher les nouveaux événements sans attendre un batch Spark. DuckDB
+élimine localement les doublons et garde la dernière version de chaque événement.
 DuckDB le transforme en vue temporaire pour produire les metriques et listes de
 sessions. Lorsqu'un fil est consulte, seules les pages visibles de messages sont
 chargees completement.

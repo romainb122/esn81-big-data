@@ -18,7 +18,8 @@ Les consommateurs analytiques utilisent les tables Iceberg du catalogue REST :
 - `opencode.events_bronze` pour le journal append-only d'ingestion.
 - `opencode.session_summary` et `opencode.tool_summary` pour les agregats Spark.
 
-Spark SQL et le dashboard lisent Silver et Gold. Bronze est conserve dans
+Spark SQL et les traitements batch lisent Silver et Gold. Le dashboard lit
+Bronze pour son aperçu temps réel. Bronze est conserve dans
 `opencode.events_bronze` et Redpanda conserve le journal rejouable en amont.
 
 ## Consequences

@@ -4,8 +4,10 @@ import urllib.request
 
 import altair as alt
 import duckdb
+import pyarrow as pa
 import streamlit as st
-from data_access import load_event_metadata, load_thread_page
+import streamlit.components.v1 as components
+from data_access import load_event_metadata, load_event_metadata_since, load_thread_page
 from design import apply_design, hero
 
 
@@ -165,17 +167,57 @@ def render_processing_trace(trace):
 
 st.set_page_config(page_title="Conversation Observatory", page_icon="O", layout="wide")
 apply_design()
-hero("Observatoire local", "Conversation Observatory", "Conversations, agents et operations versionnes dans Iceberg puis analyses avec DuckDB.")
+live_listener = components.declare_component("bronze_commit_listener", path="/app/live_component")
+commit_event = live_listener(url="http://localhost:8503/events", default=None, key="bronze-commit-listener")
+if commit_event and commit_event != st.session_state.get("last_bronze_commit"):
+    st.session_state.last_bronze_commit = commit_event
+    load_event_metadata_since.clear()
+    load_thread_page.clear()
+    st.rerun()
+hero("Observatoire local", "Conversation Observatory", "Un espace clair pour suivre les conversations, les outils et les étapes de travail.", "● DIRECT · ÉVÉNEMENTS REDPANDA")
 
 with st.sidebar:
+    st.header("Navigation")
+    st.link_button("Ouvrir la documentation", "http://localhost:8502", use_container_width=True)
+    st.page_link("pages/compare.py", label="Comparateur technique", icon="📊")
+    st.divider()
     st.header("Donnees")
-    if st.button("Rafraichir depuis S3", use_container_width=True):
+    if st.button("Actualiser maintenant", use_container_width=True):
         load_event_metadata.clear()
+        load_event_metadata_since.clear()
         load_thread_page.clear()
-    st.caption("L'index Iceberg est mis en cache 60 secondes. Le contenu du fil est charge par pages.")
+        st.session_state.pop("live_events", None)
+        st.session_state.pop("live_event_keys", None)
+        st.rerun()
+    st.markdown('<span class="live-note">● Donnees Bronze en direct</span>', unsafe_allow_html=True)
+    st.caption("Le dashboard est actualisé une seule fois après le commit Bronze d’un message finalisé. Aucun rafraîchissement périodique.")
 
 try:
-    events = load_event_metadata()
+    if "live_events" not in st.session_state:
+        st.session_state.live_events = load_event_metadata()
+        current = st.session_state.live_events
+        st.session_state.live_event_keys = set(zip(
+            current.column("session_id").to_pylist(),
+            current.column("event_id").to_pylist(),
+            current.column("exported_at_ms").to_pylist(),
+        )) if current is not None else set()
+    else:
+        current = st.session_state.live_events
+        if current is not None and current.num_rows:
+            last_export = max(value for value in current.column("exported_at_ms").to_pylist() if value is not None)
+            recent = load_event_metadata_since(last_export)
+            if recent is not None and recent.num_rows:
+                recent_keys = list(zip(
+                    recent.column("session_id").to_pylist(),
+                    recent.column("event_id").to_pylist(),
+                    recent.column("exported_at_ms").to_pylist(),
+                ))
+                unseen = [key not in st.session_state.live_event_keys for key in recent_keys]
+                if any(unseen):
+                    delta = recent.filter(pa.array(unseen))
+                    st.session_state.live_events = pa.concat_tables([current, delta])
+                    st.session_state.live_event_keys.update(key for key, keep in zip(recent_keys, unseen) if keep)
+    events = st.session_state.live_events
 except Exception as error:
     st.error("Impossible de lire la table Iceberg.")
     st.exception(error)
@@ -205,54 +247,148 @@ connection.execute(
 try:
     sessions = connection.execute(
         """
+        WITH activity AS (
+          SELECT
+            session_id,
+            max(session_title) AS title,
+            max(session_agent) AS agent,
+            max(session_provider_id) AS provider_id,
+            max(session_model_id) AS model_id,
+            max(session_model_variant) AS model_variant,
+            count(DISTINCT message_id) AS messages,
+            count(*) AS events,
+            count(*) FILTER (WHERE event_type = 'tool') AS commands,
+            max(to_timestamp(message_created_ms / 1000.0) AT TIME ZONE 'Europe/Paris') AS last_activity
+          FROM events
+          GROUP BY session_id
+        ), message_usage AS (
+          SELECT
+            session_id,
+            message_id,
+            max(session_agent) AS session_agent,
+            max(session_cost) AS cost,
+            max(session_tokens_input) AS input_tokens,
+            max(session_tokens_output) AS output_tokens,
+            max(session_tokens_reasoning) AS reasoning_tokens,
+            max(session_tokens_cache_read) AS cache_read_tokens,
+            max(session_tokens_cache_write) AS cache_write_tokens
+          FROM events
+          WHERE role = 'assistant'
+          GROUP BY session_id, message_id
+        ), usage AS (
+          SELECT
+            session_id,
+            CASE WHEN max(session_agent) = 'build' THEN max(cost) ELSE sum(cost) END AS cost,
+            CASE WHEN max(session_agent) = 'build' THEN max(input_tokens) ELSE sum(input_tokens) END AS input_tokens,
+            CASE WHEN max(session_agent) = 'build' THEN max(output_tokens) ELSE sum(output_tokens) END AS output_tokens,
+            CASE WHEN max(session_agent) = 'build' THEN max(reasoning_tokens) ELSE sum(reasoning_tokens) END AS reasoning_tokens,
+            CASE WHEN max(session_agent) = 'build' THEN max(cache_read_tokens) ELSE sum(cache_read_tokens) END AS cache_read_tokens,
+            CASE WHEN max(session_agent) = 'build' THEN max(cache_write_tokens) ELSE sum(cache_write_tokens) END AS cache_write_tokens
+          FROM message_usage
+          GROUP BY session_id
+        )
         SELECT
-          session_id,
-          max(session_title) AS title,
-          max(session_agent) AS agent,
-          max(session_provider_id) AS provider_id,
-          max(session_model_id) AS model_id,
-          max(session_model_variant) AS model_variant,
-          max(session_cost) AS cost,
-          max(session_tokens_input) AS input_tokens,
-          max(session_tokens_output) AS output_tokens,
-          max(session_tokens_reasoning) AS reasoning_tokens,
-          max(session_tokens_cache_read) AS cache_read_tokens,
-          max(session_tokens_cache_write) AS cache_write_tokens,
-          count(DISTINCT message_id) AS messages,
-          count(*) AS events,
-          count(*) FILTER (WHERE event_type = 'tool') AS commands,
-          max(to_timestamp(message_created_ms / 1000.0)) AS last_activity
-        FROM events
-        GROUP BY session_id
+          activity.*,
+          usage.cost,
+          usage.input_tokens,
+          usage.output_tokens,
+          usage.reasoning_tokens,
+          usage.cache_read_tokens,
+          usage.cache_write_tokens
+        FROM activity
+        LEFT JOIN usage USING (session_id)
         ORDER BY last_activity DESC
         """
     ).fetchdf()
     numeric = ["cost", "input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens", "cache_write_tokens"]
     sessions[numeric] = sessions[numeric].fillna(0)
     sessions["total_tokens"] = sessions[numeric[1:]].sum(axis=1)
+    sessions["harness"] = sessions["session_id"].map(lambda value: "OpenCode" if str(value).startswith("ses_") else "Pi")
+    sessions["model_label"] = sessions["model_id"].fillna("Modèle inconnu")
 
     total_cost = float(sessions["cost"].sum())
     total_tokens = int(sessions["total_tokens"].sum())
     total_commands = int(sessions["commands"].sum())
     total_messages = int(sessions["messages"].sum())
 
-    first, second, third, fourth = st.columns(4)
+    first, second, third, fourth, fifth = st.columns(5)
     first.metric("Discussions", f"{len(sessions):,}")
     second.metric("Messages", f"{total_messages:,}")
-    third.metric("Commandes executees", f"{total_commands:,}")
-    fourth.metric("Tokens / cout", f"{total_tokens:,} / ${total_cost:,.4f}")
+    third.metric("Outils", f"{total_commands:,}")
+    fourth.metric("Tokens", f"{total_tokens:,}")
+    fifth.metric("Coût total", f"${total_cost:,.4f}")
 
     st.markdown("#### Explorer les donnees")
-    page = st.radio(
+    latest_activity = sessions["last_activity"].max() if not sessions.empty else None
+    st.caption(f"Dernière activité visible : {latest_activity.strftime('%d/%m/%Y à %H:%M')}" if latest_activity is not None else "Aucune activité récente")
+    page = st.segmented_control(
         "Navigation principale",
-        ["Vue globale", "Fil de discussion", "Requetes Spark"],
-        horizontal=True,
+        ["Vue d'ensemble", "Discussion", "Requêtes Spark"],
+        default="Vue d'ensemble",
+        selection_mode="single",
         label_visibility="collapsed",
     )
+    page = {"Vue d'ensemble": "Vue globale", "Discussion": "Fil de discussion", "Requêtes Spark": "Requetes Spark"}.get(page, "Vue globale")
 
     session_options = {f"{row.title or 'Sans titre'} - {row.session_id}": row.session_id for row in sessions.itertuples()}
 
     if page == "Vue globale":
+        st.subheader("Comparaison des modèles et harnais")
+        comparison = (
+            sessions.groupby(["harness", "model_label"], as_index=False)
+            .agg(
+                discussions=("session_id", "count"),
+                messages=("messages", "sum"),
+                commandes=("commands", "sum"),
+                tokens=("total_tokens", "sum"),
+                cout=("cost", "sum"),
+            )
+            .sort_values(["tokens", "discussions"], ascending=False)
+        )
+        left, right = st.columns([1.15, 1])
+        with left:
+            st.dataframe(
+                comparison,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "harness": "Harnais", "model_label": "Modèle",
+                    "discussions": "Discussions", "messages": "Messages",
+                    "commandes": "Outils", "tokens": "Tokens",
+                    "cout": st.column_config.NumberColumn("Coût", format="$%.4f"),
+                },
+            )
+        with right:
+            st.altair_chart(
+                alt.Chart(comparison).mark_bar(cornerRadiusTopRight=6).encode(
+                    x=alt.X("tokens:Q", title="Tokens"),
+                    y=alt.Y("model_label:N", sort="-x", title="Modèle"),
+                    color=alt.Color("harness:N", title="Harnais", scale=alt.Scale(range=["#5264d8", "#e58b35"])),
+                    tooltip=["harness", "model_label", "discussions", "tokens", "cout"],
+                ).properties(height=260),
+                use_container_width=True,
+            )
+
+        activity = connection.execute("""
+            SELECT CAST(to_timestamp(message_created_ms / 1000.0) AT TIME ZONE 'Europe/Paris' AS DATE) AS jour,
+                   count(DISTINCT message_id) AS messages,
+                   count(*) FILTER (WHERE event_type = 'tool') AS outils
+            FROM events
+            WHERE message_created_ms IS NOT NULL
+            GROUP BY jour ORDER BY jour
+        """).fetchdf()
+        if not activity.empty:
+            st.subheader("Activité dans le temps")
+            st.altair_chart(
+                alt.Chart(activity).transform_fold(["messages", "outils"], as_=["metric", "volume"])
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("jour:T", title="Jour"), y=alt.Y("volume:Q", title="Volume"),
+                    color=alt.Color("metric:N", title="Type"), tooltip=["jour:T", "metric:N", "volume:Q"],
+                ).properties(height=260),
+                use_container_width=True,
+            )
+
         usage_by_model = connection.execute(
             """
             SELECT model_id, count(DISTINCT session_id) AS discussions,
@@ -274,9 +410,9 @@ try:
         ).fetchdf()
         left, right = st.columns(2)
         with left:
-            st.subheader("Tokens par modele")
+            st.subheader("Répartition des tokens par modèle")
             st.altair_chart(
-                alt.Chart(usage_by_model).mark_bar(color="#6ee7b7", cornerRadiusTopRight=7).encode(
+                alt.Chart(usage_by_model).mark_bar(color="#5264d8", cornerRadiusTopRight=7).encode(
                     x=alt.X("tokens:Q", title="Tokens"),
                     y=alt.Y("model_id:N", sort="-x", title="Modele"),
                     tooltip=["model_id", "discussions", "tokens"],
@@ -284,9 +420,9 @@ try:
                 use_container_width=True,
             )
         with right:
-            st.subheader("Outils les plus utilises")
+            st.subheader("Outils les plus utilisés")
             st.altair_chart(
-                alt.Chart(tools).mark_bar(color="#7aa7ff", cornerRadiusTopRight=7).encode(
+                alt.Chart(tools).mark_bar(color="#e58b35", cornerRadiusTopRight=7).encode(
                     x=alt.X("executions:Q", title="Executions"),
                     y=alt.Y("outil:N", sort="-x", title="Outil"),
                     tooltip=["outil", "executions"],
@@ -295,7 +431,7 @@ try:
             )
         st.subheader("Toutes les discussions")
         st.dataframe(
-            sessions[["session_id", "title", "model_id", "agent", "messages", "commands", "total_tokens", "cost", "last_activity"]],
+            sessions[["session_id", "title", "harness", "model_id", "messages", "commands", "total_tokens", "cost", "last_activity"]],
             use_container_width=True,
             hide_index=True,
             column_config={"cost": st.column_config.NumberColumn("Cout", format="$%.4f")},
@@ -303,14 +439,14 @@ try:
 
     elif page == "Fil de discussion":
         st.subheader("Fil de discussion")
-        st.caption("Les 12 derniers messages sont affiches en premier. Les messages plus anciens sont charges a la demande.")
+        st.caption("Les messages les plus récents sont affichés en premier. Les pages anciennes sont chargées à la demande.")
         selected_label = st.selectbox("Choisir une discussion", list(session_options), key="thread_session_select")
         selected_session = session_options[selected_label]
         if st.session_state.get("thread_loaded_session") != selected_session:
             st.session_state["thread_loaded_session"] = selected_session
             st.session_state["thread_page_count"] = 1
         selected = sessions.loc[sessions["session_id"] == selected_session].iloc[0]
-        st.caption(f"{selected['provider_id']}/{selected['model_id']} - agent {selected['agent']}")
+        st.caption(f"{selected['provider_id'] or 'provider inconnu'} · {selected['model_id'] or 'modèle inconnu'} · agent {selected['agent'] or 'Pi'}")
         first, second, third, fourth = st.columns(4)
         first.metric("Cout", f"${selected['cost']:,.4f}")
         second.metric("Entree", f"{int(selected['input_tokens']):,} tokens")
@@ -344,7 +480,7 @@ try:
             connection.register("thread_events_raw", thread_events)
             timeline = connection.execute(
                 """
-                SELECT *, to_timestamp(message_created_ms / 1000.0) AS created_at
+                SELECT *, to_timestamp(message_created_ms / 1000.0) AT TIME ZONE 'Europe/Paris' AS created_at
                 FROM (
                   SELECT *, row_number() OVER (
                     PARTITION BY session_id, event_id ORDER BY exported_at_ms DESC

@@ -13,13 +13,14 @@ projet. Une nouvelle connexion DuckDB est creee pour une execution du dashboard.
 
 ```mermaid
 flowchart LR
-  ICE["Iceberg Silver"] -->|"Arrow Table"| APP["Processus Streamlit"]
+  ICE["Iceberg Bronze<br/>aperçu direct"] -->|"Arrow Table"| APP["Processus Streamlit"]
   APP -->|"enregistrement en memoire"| DUCK["DuckDB<br/>events_raw"]
   DUCK -->|"SQL local"| VIEW["vue temporaire<br/>events"]
   VIEW -->|"DataFrame Pandas"| UI["graphiques et tableaux"]
 ```
 
-Le dashboard charge un index Iceberg sous forme de table Arrow. DuckDB enregistre
+Le dashboard charge l'index Bronze Iceberg sous forme de table Arrow pour rester
+à jour en direct. DuckDB enregistre
 cette table en memoire, cree une vue temporaire `events`, puis supprime les
 doublons par `session_id` et `event_id`.
 

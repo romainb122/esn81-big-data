@@ -7,31 +7,17 @@ import streamlit as st
 from data_access import load_event_metadata, load_thread_page
 from design import apply_design, hero
 
-
 PHASES = {
-    "skill": "Contexte",
-    "read": "Analyse",
-    "glob": "Analyse",
-    "grep": "Analyse",
-    "task": "Delegation",
-    "apply_patch": "Modification",
-    "edit": "Modification",
-    "bash": "Execution",
-    "question": "Clarification",
-    "webfetch": "Recherche externe",
+    "skill": "Contexte", "read": "Analyse", "glob": "Analyse", "grep": "Analyse",
+    "task": "Delegation", "apply_patch": "Modification", "edit": "Modification",
+    "bash": "Execution", "question": "Clarification", "webfetch": "Recherche externe",
     "todowrite": "Suivi",
 }
-
-PHASE_COLORS = {
-    "Contexte": "#6b7280",
-    "Analyse": "#2563eb",
-    "Delegation": "#7c3aed",
-    "Modification": "#d97706",
-    "Execution": "#0f766e",
-    "Clarification": "#db2777",
-    "Recherche externe": "#0891b2",
-    "Suivi": "#64748b",
-    "Reponse": "#16a34a",
+COLORS = {
+    "Contexte": "#64748b", "Analyse": "#2563eb", "Delegation": "#7c3aed",
+    "Modification": "#d97706", "Execution": "#0f766e", "Clarification": "#db2777",
+    "Recherche externe": "#0891b2", "Suivi": "#64748b", "Reponse": "#16a34a",
+    "Demande": "#2563eb", "Operation": "#475467",
 }
 
 
@@ -42,232 +28,149 @@ def task_calls(events):
             task = json.loads(event["tool_input_json"] or "{}")
         except json.JSONDecodeError:
             task = {}
-        calls.append(
-            {
-                "subagent": task.get("subagent_type", "inconnu"),
-                "objectif": task.get("description", "Sans description"),
-                "status": event["tool_status"] or "inconnu",
-                "resultat": event["tool_output"] or "",
-            }
-        )
+        calls.append({
+            "subagent": task.get("subagent_type", "inconnu"),
+            "objectif": task.get("description", "Sans description"),
+            "status": event["tool_status"] or "inconnu",
+            "resultat": (event["tool_output"] or "")[:180],
+        })
     return calls
 
 
-def phase_for_message(events):
+def phases_for(events):
     phases = []
     for event in events.to_dict("records"):
-        if event["event_type"] == "text" and event["role"] == "assistant":
-            phases.append("Reponse")
-        elif event["event_type"] == "patch":
-            phases.append("Modification")
+        if event["event_type"] == "text":
+            phase = "Demande" if event["role"] == "user" else "Reponse"
         elif event["event_type"] == "tool":
-            phases.append(PHASES.get(event["tool_name"], "Operation"))
-    return list(dict.fromkeys(phases))
-
-
-def message_usage(events):
-    tokens = 0
-    cost = 0.0
-    for event in events.to_dict("records"):
-        if event["event_type"] != "step-finish":
+            phase = PHASES.get(event["tool_name"], "Operation")
+        else:
             continue
-        try:
-            details = json.loads(event["details_json"] or "{}")
-        except json.JSONDecodeError:
-            details = {}
-        step_tokens = details.get("tokens", {})
-        tokens += sum(value for value in step_tokens.values() if isinstance(value, int))
-        step_cost = details.get("cost")
-        if isinstance(step_cost, (int, float)):
-            cost += step_cost
-    return tokens, cost
+        if phase not in phases:
+            phases.append(phase)
+    return phases
 
 
 def build_flow(events):
     nodes = []
     edges = []
+    previous = None
     prompt_index = 0
-    vertical_step = 0
-    previous_node = None
-
-    for message_id, message_events in events.groupby("message_id", sort=False):
-        first = message_events.iloc[0]
+    step = 0
+    for message_id, group in events.groupby("message_id", sort=False):
+        first = group.iloc[0]
+        calls = task_calls(group)
+        phases = phases_for(group)
         if first["role"] == "user":
             prompt_index += 1
-            vertical_step = 0
-            content = next((event["content"] for event in message_events.to_dict("records") if event["event_type"] == "text"), "")
-            node = {
-                "id": message_id,
-                "x": prompt_index * 3,
-                "y": 0,
-                "label": f"Prompt {prompt_index}",
-                "shape": "circle",
-                "color": "#2563eb",
-                "hover": f"<b>Utilisateur</b><br>{content}<extra></extra>",
-            }
+            step = 0
+            label = f"Prompt {prompt_index}"
+            kind = "prompt"
+            color = COLORS["Demande"]
+            hover = (group["content"].dropna().iloc[0][:220] if group["content"].notna().any() else "Prompt utilisateur")
         else:
-            vertical_step += 1
-            phases = phase_for_message(message_events)
-            tokens, cost = message_usage(message_events)
-            calls = task_calls(message_events)
-            label = " + ".join(phases[:2]) or "Etape"
+            step += 1
+            label = f"{phases[0] if phases else 'Etape'}"
             if calls:
-                label = f"Delegation: {calls[0]['subagent']}"
-            node = {
-                "id": message_id,
-                "x": prompt_index * 3,
-                "y": vertical_step,
-                "label": label,
-                "shape": "square",
-                "color": PHASE_COLORS.get(phases[0], "#475569") if phases else "#475569",
-                "hover": (
-                    f"<b>Agent: {first['agent'] or 'Pi'}</b><br>"
-                    f"Etapes: {', '.join(phases) or 'operation'}<br>"
-                    f"Tokens de l'etape: {tokens:,}<br>Cout de l'etape: ${cost:,.4f}<extra></extra>"
-                ),
-            }
+                label = f"Sous-agent : {calls[0]['subagent']}"
+            kind = "step"
+            color = COLORS.get(phases[0], COLORS["Operation"]) if phases else COLORS["Operation"]
+            hover = " · ".join(phases) or "Operation"
+        node = {"x": prompt_index * 4, "y": step, "label": label, "color": color, "kind": kind, "hover": hover}
         nodes.append(node)
-        if previous_node:
-            edges.append((previous_node, node))
-        previous_node = node
-
-        if first["role"] != "user":
-            for branch_index, call in enumerate(task_calls(message_events), start=1):
-                branch = {
-                    "id": f"{message_id}-task-{branch_index}",
-                    "x": node["x"] + 1.05,
-                    "y": node["y"] + branch_index * 0.35,
-                    "label": f"Sous-agent: {call['subagent']}",
-                    "shape": "diamond",
-                    "color": "#16a34a" if call["status"] in {"completed", "success"} else "#dc2626",
-                    "hover": (
-                        f"<b>Sous-agent: {call['subagent']}</b><br>"
-                        f"Objectif: {call['objectif']}<br>"
-                        f"Statut: {call['status']}<br>"
-                        f"Resultat: {call['resultat'][:600]}<extra></extra>"
-                    ),
-                }
-                nodes.append(branch)
-                edges.append((node, branch))
+        if previous:
+            edges.append((previous, node))
+        previous = node
+        for index, call in enumerate(calls, 1):
+            branch = {
+                "x": node["x"] + 1.0, "y": node["y"] + index * .42,
+                "label": f"{call['subagent']}", "color": "#16a34a" if call["status"] in {"completed", "success"} else "#dc2626",
+                "kind": "branch", "hover": f"{call['objectif']} · {call['status']}\n{call['resultat']}",
+            }
+            nodes.append(branch)
+            edges.append((node, branch))
     return nodes, edges
 
 
 def flow_chart(nodes, edges):
-    figure = go.Figure()
+    edge_x, edge_y = [], []
     for source, target in edges:
-        figure.add_annotation(
-            x=target["x"],
-            y=target["y"],
-            ax=source["x"],
-            ay=source["y"],
-            xref="x",
-            yref="y",
-            axref="x",
-            ayref="y",
-            showarrow=True,
-            arrowhead=3,
-            arrowsize=1,
-            arrowwidth=1.5,
-            arrowcolor="#94a3b8",
-        )
-    figure.add_trace(
-        go.Scatter(
-            x=[node["x"] for node in nodes],
-            y=[node["y"] for node in nodes],
-            mode="markers+text",
-            text=[node["label"] for node in nodes],
-            textposition="top center",
-            hovertemplate=[node["hover"] for node in nodes],
-            marker={
-                "size": 28,
-                "color": [node["color"] for node in nodes],
-                "symbol": [node["shape"] for node in nodes],
-                "line": {"color": "#0b0d10", "width": 3},
-            },
-            textfont={"color": "#d7dde6", "size": 11},
-        )
-    )
+        edge_x += [source["x"], target["x"], None]
+        edge_y += [source["y"], target["y"], None]
+    figure = go.Figure()
+    figure.add_trace(go.Scatter(
+        x=edge_x, y=edge_y, mode="lines", line={"color": "#cbd5e1", "width": 1.5},
+        hoverinfo="skip", showlegend=False,
+    ))
+    for kind, symbol, size in [("prompt", "circle", 18), ("step", "square", 15), ("branch", "diamond", 13)]:
+        items = [node for node in nodes if node["kind"] == kind]
+        if not items:
+            continue
+        figure.add_trace(go.Scatter(
+            x=[node["x"] for node in items], y=[node["y"] for node in items],
+            mode="markers+text" if kind != "branch" else "markers+text",
+            text=[node["label"] for node in items], textposition="top center",
+            textfont={"size": 10, "color": "#344054"},
+            customdata=[node["hover"] for node in items],
+            hovertemplate="<b>%{text}</b><br>%{customdata}<extra></extra>",
+            marker={"size": size, "symbol": symbol, "color": [node["color"] for node in items], "line": {"color": "#ffffff", "width": 2}},
+            showlegend=False,
+        ))
     figure.update_layout(
-        height=760,
-        margin={"l": 32, "r": 32, "t": 24, "b": 28},
-        paper_bgcolor="#13171c",
-        plot_bgcolor="#13171c",
-        font={"family": "Inter, ui-sans-serif, system-ui, sans-serif", "color": "#d7dde6"},
-        hoverlabel={"bgcolor": "#20262e", "bordercolor": "#3b4653", "font": {"color": "#f8fafc"}},
-        dragmode="pan",
-        showlegend=False,
-        xaxis={"title": "Progression de la discussion", "showgrid": False, "zeroline": False, "fixedrange": False, "color": "#8f9aaa"},
-        yaxis={"title": "Traitement declenche", "showgrid": True, "gridcolor": "#222831", "zeroline": False, "fixedrange": False, "color": "#8f9aaa"},
+        height=max(520, min(760, 360 + len(nodes) * 3)),
+        margin={"l": 24, "r": 24, "t": 20, "b": 32},
+        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff", font={"family": "Inter, sans-serif", "color": "#344054"},
+        hoverlabel={"bgcolor": "#172033", "bordercolor": "#172033", "font": {"color": "#ffffff", "size": 12}},
+        hovermode="closest", dragmode="pan", showlegend=False,
+        xaxis={"title": "Progression de la discussion", "showgrid": False, "zeroline": False, "fixedrange": False, "color": "#667085"},
+        yaxis={"title": "Traitement", "showgrid": True, "gridcolor": "#eef1f6", "zeroline": False, "fixedrange": False, "color": "#667085"},
     )
     return figure
 
 
 st.set_page_config(page_title="Flux de discussion", page_icon="F", layout="wide")
 apply_design()
-hero("Lecture chronologique", "Flux de discussion", "Les prompts progressent vers la droite. Les traitements et delegations se developpent verticalement au-dessus de leur origine.", "CANVAS INTERACTIF")
-if st.button("Retour au fil de discussion"):
+hero("Lecture chronologique", "Flux de discussion", "Une vue légère des prompts, étapes et délégations.", "FLUX INTERACTIF")
+if st.button("← Retour au fil de discussion"):
     st.switch_page("streamlit_app.py")
 
 events = load_event_metadata()
 if events is None or events.num_rows == 0:
-    st.info("Aucune donnee Iceberg disponible.")
+    st.info("Aucune donnée disponible.")
     st.stop()
 
 connection = duckdb.connect()
 connection.register("events_raw", events)
-connection.execute(
-    """
+connection.execute("""
     CREATE TEMP VIEW events AS
-    SELECT * EXCLUDE (event_rank)
-    FROM (
-      SELECT *, row_number() OVER (
-        PARTITION BY session_id, event_id ORDER BY exported_at_ms DESC
-      ) AS event_rank
+    SELECT * EXCLUDE (event_rank) FROM (
+      SELECT *, row_number() OVER (PARTITION BY session_id, event_id ORDER BY exported_at_ms DESC) AS event_rank
       FROM events_raw
-    )
-    WHERE event_rank = 1
-    """
-)
+    ) WHERE event_rank = 1
+""")
 try:
-    sessions = connection.execute(
-        """
-        SELECT session_id, max(session_title) AS title, max(to_timestamp(message_created_ms / 1000.0)) AS activity
+    sessions = connection.execute("""
+        SELECT session_id, max(session_title) AS title, max(message_created_ms) AS activity
         FROM events GROUP BY session_id ORDER BY activity DESC
-        """
-    ).fetchdf()
-    options = {f"{row.title or 'Sans titre'} - {row.session_id}": row.session_id for row in sessions.itertuples()}
-    stored_session = st.session_state.get("flow_session")
-    selected_index = next((index for index, session_id in enumerate(options.values()) if session_id == stored_session), 0)
+    """).fetchdf()
+    options = {f"{row.title or 'Sans titre'} · {row.session_id}": row.session_id for row in sessions.itertuples()}
+    stored = st.session_state.get("flow_session")
+    selected_index = next((i for i, value in enumerate(options.values()) if value == stored), 0)
     selected_label = st.selectbox("Discussion", list(options), index=selected_index)
     selected_session = options[selected_label]
     st.session_state["flow_session"] = selected_session
-    message_ids = connection.execute(
-        """
-        SELECT DISTINCT message_id
-        FROM events
-        WHERE session_id = ? AND message_id IS NOT NULL
-        """,
-        [selected_session],
-    ).fetchdf()["message_id"].tolist()
-    full_trace_events = load_thread_page(selected_session, tuple(message_ids))
-    connection.register("full_trace_events_raw", full_trace_events)
-    trace = connection.execute(
-        """
-        SELECT *, to_timestamp(message_created_ms / 1000.0) AS created_at
-        FROM (
-          SELECT *, row_number() OVER (
-            PARTITION BY session_id, event_id ORDER BY exported_at_ms DESC
-          ) AS event_rank
-          FROM full_trace_events_raw
-        )
-        WHERE event_rank = 1
-        ORDER BY message_created_ms, event_index
-        """,
-    ).fetchdf()
-    connection.unregister("full_trace_events_raw")
+    message_ids = connection.execute("SELECT DISTINCT message_id FROM events WHERE session_id = ? AND message_id IS NOT NULL", [selected_session]).fetchdf()["message_id"].tolist()
+    full_events = load_thread_page(selected_session, tuple(message_ids))
+    connection.register("full_events_raw", full_events)
+    trace = connection.execute("""
+        SELECT * FROM (
+          SELECT *, row_number() OVER (PARTITION BY session_id, event_id ORDER BY exported_at_ms DESC) AS event_rank
+          FROM full_events_raw
+        ) WHERE event_rank = 1 ORDER BY message_created_ms, event_index
+    """).fetchdf()
 finally:
     connection.close()
 
 nodes, edges = build_flow(trace)
-st.caption("Legende : cercle bleu = prompt utilisateur, carre colore = etape de l'agent, losange vert/rouge = sous-agent termine/en erreur. Utiliser la molette pour zoomer et glisser pour se deplacer.")
-st.plotly_chart(flow_chart(nodes, edges), use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
+st.caption(f"{len(nodes)} éléments · Survolez un élément pour voir un résumé. Utilisez le zoom et le déplacement si la discussion est longue.")
+st.plotly_chart(flow_chart(nodes, edges), use_container_width=True, config={"scrollZoom": True, "displaylogo": False, "responsive": True})

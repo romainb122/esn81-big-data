@@ -13,6 +13,7 @@
   - [Apache Spark](components/spark.md)
   - [DuckDB](components/duckdb.md)
   - [Streamlit](components/streamlit.md)
+  - [Comparateur technique](components/comparison.md)
 
 - Donnees
   - [Formats et transformations](data/formats.md)

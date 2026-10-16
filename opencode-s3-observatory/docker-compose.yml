@@ -101,6 +101,10 @@ services:
         condition: service_started
       redpanda-init:
         condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8503:4042"
+    volumes:
+      - ./scripts:/app/scripts:ro
     environment:
       REDPANDA_BROKERS: redpanda:9092
       REDPANDA_TOPIC: opencode.events
@@ -123,6 +127,8 @@ services:
       - spark-query
     ports:
       - "127.0.0.1:8501:8501"
+    volumes:
+      - ./app:/app:ro
     environment:
       S3_ENDPOINT: http://s3:8333
       S3_BUCKET: bigdata

@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<body style="margin:0;overflow:hidden">
+<script>
+let source;
+let currentUrl;
+function send(type, extra = {}) {
+  window.parent.postMessage({isStreamlitMessage: true, type, ...extra}, "*");
+}
+function connect(url) {
+  if (!url || url === currentUrl) return;
+  currentUrl = url;
+  if (source) source.close();
+  source = new EventSource(url);
+  source.addEventListener("bronze-commit", event => {
+    send("streamlit:setComponentValue", {value: event.data, dataType: "json"});
+  });
+}
+window.addEventListener("message", event => {
+  if (event.data?.type === "streamlit:render") connect(event.data.args?.url);
+});
+send("streamlit:componentReady", {apiVersion: 1});
+send("streamlit:setFrameHeight", {height: 0});
+</script>
+</body>
+</html>
