@@ -8,6 +8,7 @@
 - Composants
   - [Pi et export](components/export.md)
   - [Redpanda](components/redpanda.md)
+  - [Arroyo temps réel](components/arroyo.md)
   - [SeaweedFS et S3](components/seaweedfs-s3.md)
   - [Apache Iceberg](components/iceberg.md)
   - [Apache Spark](components/spark.md)

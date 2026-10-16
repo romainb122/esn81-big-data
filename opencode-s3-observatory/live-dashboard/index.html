@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Conversation Observatory · Live</title>
+  <style>
+    :root{--bg:#f4f6fb;--panel:#fff;--ink:#192033;--muted:#667085;--line:#e5e9f2;--blue:#5367db;--orange:#e58b35;--green:#20a56b;--shadow:0 12px 35px rgba(33,45,78,.08)}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}
+    header{background:linear-gradient(115deg,#18213b,#32447b);color:#fff;padding:34px max(28px,calc((100vw - 1380px)/2));box-shadow:var(--shadow)}
+    .eyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#b9c5ff}.headrow{display:flex;justify-content:space-between;align-items:end;gap:20px}
+    h1{font-size:34px;line-height:1.1;margin:8px 0}.subtitle{margin:0;color:#dce2fb}.status{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.1);padding:10px 14px;border-radius:999px;white-space:nowrap}
+    .dot{width:10px;height:10px;border-radius:50%;background:#e2a13e;box-shadow:0 0 0 5px rgba(226,161,62,.15)}.online .dot{background:#35d391;box-shadow:0 0 0 5px rgba(53,211,145,.15)}
+    main{max-width:1380px;margin:28px auto;padding:0 28px}.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.toolbar h2{margin:0;font-size:21px}.actions{display:flex;gap:10px}
+    button,a.button{border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 13px;border-radius:9px;text-decoration:none;cursor:pointer;font-weight:650}
+    .metrics{display:grid;grid-template-columns:repeat(7,1fr);gap:14px;margin-bottom:22px}.metric{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:17px 18px;box-shadow:var(--shadow)}
+    .metric span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.metric strong{display:block;font-size:25px;margin-top:4px}.stream{display:grid;gap:14px}
+    .empty{padding:55px;text-align:center;background:#fff;border:1px dashed #cdd4e3;border-radius:16px;color:var(--muted)}
+    article{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;animation:enter .28s ease-out}@keyframes enter{from{opacity:0;transform:translateY(-8px)}}
+    .cardhead{display:flex;justify-content:space-between;gap:18px;padding:14px 18px;border-bottom:1px solid var(--line);background:#fafbfe}.identity{display:flex;align-items:center;gap:10px}.badge{font-weight:800;padding:4px 9px;border-radius:7px;background:#edf0ff;color:#4156ce}.badge.open{background:#fff1e5;color:#b9671e}
+    .meta{color:var(--muted);font-size:13px}.numbers{display:flex;gap:18px;align-items:center;font-variant-numeric:tabular-nums}.numbers b{color:var(--ink)}.answer{padding:18px;white-space:pre-wrap;max-height:360px;overflow:auto}.session{padding:0 18px 14px;color:#98a2b3;font:11px ui-monospace,monospace}
+    @media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}.headrow{align-items:start;flex-direction:column}.cardhead{flex-direction:column}.numbers{flex-wrap:wrap}}
+  </style>
+</head>
+<body>
+<header><div class="eyebrow">Redpanda → Arroyo → Server-Sent Events</div><div class="headrow"><div><h1>Conversation Observatory Live</h1><p class="subtitle">Les réponses finalisées apparaissent sans actualiser la page.</p></div><div id="status" class="status"><span class="dot"></span><span>Connexion à Arroyo…</span></div></div></header>
+<main>
+  <div class="toolbar"><h2>Flux en direct</h2><div class="actions"><button id="clear">Effacer l’écran</button><a class="button" href="http://localhost:8510" target="_blank">Arroyo ↗</a><a class="button" href="http://localhost:8501" target="_blank">Dashboard classique ↗</a></div></div>
+  <section class="metrics">
+    <div class="metric"><span>Réponses reçues</span><strong id="events">0</strong></div>
+    <div class="metric"><span>Tokens entrée</span><strong id="input">0</strong></div>
+    <div class="metric"><span>Tokens sortie</span><strong id="output">0</strong></div>
+    <div class="metric"><span>Cache lu</span><strong id="cache">0</strong></div>
+    <div class="metric"><span>Raisonnement</span><strong id="reasoning">0</strong></div>
+    <div class="metric"><span>Volume traité</span><strong id="tokens">0</strong></div>
+    <div class="metric"><span>Coût observé</span><strong id="cost">$0.000000</strong></div>
+  </section>
+  <section id="stream" class="stream"><div class="empty">En attente de la prochaine réponse Pi ou OpenCode…</div></section>
+</main>
+<script>
+const API='http://localhost:8510/api/v1';
+const state={events:0,input:0,output:0,cache:0,reasoning:0,tokens:0,cost:0,source:null};
+const $=id=>document.getElementById(id);
+const fmt=n=>new Intl.NumberFormat('fr-FR').format(n||0);
+function status(text,online=false){$('status').className='status'+(online?' online':'');$('status').lastElementChild.textContent=text}
+function metrics(){$('events').textContent=fmt(state.events);$('input').textContent=fmt(state.input);$('output').textContent=fmt(state.output);$('cache').textContent=fmt(state.cache);$('reasoning').textContent=fmt(state.reasoning);$('tokens').textContent=fmt(state.tokens);$('cost').textContent='$'+state.cost.toFixed(6)}
+function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
+function receive(row){
+  const input=Number(row.session_tokens_input||0), output=Number(row.session_tokens_output||0), reasoning=Number(row.session_tokens_reasoning||0), cache=Number(row.session_tokens_cache_read||0)+Number(row.session_tokens_cache_write||0);
+  state.events++;state.input+=input;state.output+=output;state.cache+=cache;state.reasoning+=reasoning;state.tokens+=input+output+reasoning+cache;state.cost+=Number(row.session_cost||0);metrics();
+  const harness=(row.session_agent||'').toLowerCase()==='pi'?'Pi':'OpenCode';
+  const time=row.message_completed_ms?new Date(row.message_completed_ms).toLocaleTimeString('fr-FR'):'maintenant';
+  const duration=row.message_completed_ms&&row.message_created_ms?((row.message_completed_ms-row.message_created_ms)/1000).toFixed(2)+' s':'—';
+  const article=document.createElement('article');
+  article.innerHTML=`<div class="cardhead"><div class="identity"><span class="badge ${harness==='OpenCode'?'open':''}">${harness}</span><div><b>${esc(row.session_model_id||'modèle inconnu')}</b><div class="meta">${esc(row.session_provider_id||'fournisseur inconnu')} · ${time}</div></div></div><div class="numbers"><span>Entrée <b>${fmt(input)}</b></span><span>Sortie <b>${fmt(output)}</b></span><span>Cache lu <b>${fmt(Number(row.session_tokens_cache_read||0))}</b></span><span>Raisonnement <b>${fmt(reasoning)}</b></span><span>Volume <b>${fmt(input+output+reasoning+cache)}</b></span><span>Durée <b>${duration}</b></span><span>Coût <b>$${Number(row.session_cost||0).toFixed(6)}</b></span></div></div><div class="answer">${esc(row.content||'')}</div><div class="session">${esc(row.session_id||'')}</div>`;
+  const stream=$('stream');stream.querySelector('.empty')?.remove();stream.prepend(article);while(stream.children.length>100)stream.lastElementChild.remove();
+}
+async function connect(){
+  try{
+    status('Recherche du pipeline Arroyo…');
+    const pipelines=(await (await fetch(`${API}/pipelines?limit=100`)).json()).data||[];
+    const pipeline=pipelines.find(p=>p.name==='conversation-observatory-live');
+    if(!pipeline)throw new Error('pipeline introuvable');
+    const jobs=(await (await fetch(`${API}/pipelines/${pipeline.id}/jobs`)).json()).data||[];
+    const job=jobs.find(j=>j.state==='Running')||jobs[0];if(!job)throw new Error('job Arroyo absent');
+    state.source?.close();state.source=new EventSource(`${API}/pipelines/${pipeline.id}/jobs/${job.id}/output`);
+    state.source.onopen=()=>status('Connecté · flux Arroyo actif',true);
+    state.source.onerror=()=>status('Reconnexion au flux Arroyo…');
+    state.source.onmessage=event=>{try{const envelope=JSON.parse(event.data);for(const row of JSON.parse(envelope.batch||'[]'))receive(row)}catch(error){console.error(error)}};
+  }catch(error){status(`Arroyo indisponible · ${error.message}`);setTimeout(connect,3000)}
+}
+$('clear').onclick=()=>{state.events=state.input=state.output=state.cache=state.reasoning=state.tokens=state.cost=0;metrics();$('stream').innerHTML='<div class="empty">Écran vidé. En attente de la prochaine réponse…</div>'};
+connect();
+</script>
+</body></html>

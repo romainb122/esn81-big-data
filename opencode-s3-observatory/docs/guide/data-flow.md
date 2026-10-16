@@ -14,7 +14,30 @@ Hook pi `message_end`
   -> topic Redpanda
 ```
 
-## 2. Ingestion Bronze
+## 2. Branche temps réel Arroyo
+
+En parallèle de l'ingestion Iceberg, Arroyo consomme `opencode.events` avec son
+connecteur Kafka. Le pipeline SQL `conversation-observatory-live` conserve les
+événements texte dont le rôle est `assistant`, puis écrit le résultat dans son
+`PreviewSink`.
+
+Le dashboard HTML ouvre une connexion `EventSource` directement sur la sortie
+SSE du job Arroyo. Chaque événement modifie uniquement le DOM et les compteurs
+locaux : il n'y a ni polling ni rechargement de page.
+
+```text
+opencode.events
+  -> Arroyo KafkaSource
+  -> filtre SQL assistant/text
+  -> PreviewSink
+  -> SSE
+  -> dashboard HTML :8503
+```
+
+Cette branche est instantanée mais éphémère. L'historique et les analyses
+restent sous la responsabilité d'Iceberg.
+
+## 3. Ingestion Bronze
 
 `iceberg-sink` consomme le topic avec le groupe
 `opencode-iceberg-bronze`. Il ajoute chaque lot dans
@@ -29,14 +52,14 @@ Topic Redpanda
   -> snapshot opencode.events_bronze, couche Bronze
 ```
 
-## 3. Promotion Silver
+## 4. Promotion Silver
 
 Le premier etage de `spark-batch` prend, pour chaque session, les evenements du
 plus recent `exported_at_ms`, deduplique `event_id`, puis publie un nouveau
 snapshot de `opencode.events`. Les consommateurs voient donc soit la version
 Silver precedente, soit la version complete apres promotion.
 
-## 4. Consultation interactive
+## 5. Consultation interactive historique
 
 Streamlit charge directement depuis la table Iceberg Bronze un index léger afin
 d'afficher les nouveaux événements sans attendre un batch Spark. DuckDB
@@ -52,7 +75,7 @@ Iceberg snapshot
   -> DataFrame et composants Streamlit
 ```
 
-## 5. Requetes et batch Spark
+## 6. Requetes et batch Spark
 
 Le dashboard envoie le SQL a `spark-query`. Ce service lit le snapshot Iceberg,
 execute la requete et renvoie au dashboard un resultat JSON limite a 500 lignes.
@@ -68,6 +91,7 @@ opencode.events
 
 ## Fraicheur des donnees
 
-Bronze est a jour apres le commit du consommateur Redpanda. Silver et Gold sont
-a jour apres le prochain lancement de `spark-batch`; elles peuvent donc etre
-temporairement en retard par rapport a Bronze.
+Le dashboard HTML reçoit un événement dès sa sortie du pipeline Arroyo, sans
+attendre Iceberg. Bronze est à jour après le commit du consommateur Redpanda.
+Silver et Gold sont à jour après le prochain lancement de `spark-batch`; elles
+peuvent donc être temporairement en retard par rapport à Bronze.

@@ -1,7 +1,8 @@
 # Conversation Observatory
 
-Application locale qui publie les evenements visibles des sessions pi dans Redpanda,
-les conserve dans Apache Iceberg sur SeaweedFS/S3 et les explore avec Streamlit.
+Application locale qui publie les événements visibles de Pi et OpenCode dans
+Redpanda, les diffuse en direct avec Arroyo/SSE, les conserve dans Apache
+Iceberg sur SeaweedFS/S3 et les explore avec Streamlit.
 
 ## Demarrage rapide
 
@@ -13,7 +14,9 @@ docker compose up -d --build
 
 Ouvrir ensuite :
 
-- Dashboard : `http://localhost:8501`
+- Dashboard HTML temps réel : `http://localhost:8503`
+- Dashboard Streamlit historique : `http://localhost:8501`
+- Interface Arroyo : `http://localhost:8510`
 - Redpanda REST Proxy : `http://localhost:18082`
 - Catalogue Iceberg : `http://localhost:8181`
 - Documentation : `http://localhost:8502`
@@ -25,7 +28,10 @@ Les identifiants S3 sont uniquement destines a la demonstration locale :
 
 ```text
 app/                         Dashboard Streamlit
-scripts/                     Publication pi et ingestion Iceberg
+live-dashboard/              Dashboard HTML alimenté en SSE
+config/arroyo-live.sql       Pipeline SQL Arroyo
+scripts/                     Publication, ingestion et provisionnement
+opencode/                    Plugin d'export OpenCode
 docs/                        Site Docsify et documentation Markdown
 spark/                       Promotion Bronze vers Silver et tables Gold
 docker-compose.yml           Services du pipeline local
@@ -37,6 +43,7 @@ docker-compose.yml           Services du pipeline local
 # Voir les conteneurs et leurs journaux
 docker compose ps
 docker compose logs -f dashboard
+docker compose logs -f arroyo
 docker compose logs -f documentation
 
 # Installer l'extension pi en temps réel
@@ -67,16 +74,15 @@ peut contenir un secret.
 
 ## Vues du dashboard
 
-Le dashboard propose trois vues explicites :
+Le projet propose deux interfaces complémentaires :
+
+- `Dashboard HTML temps réel` (`:8503`) : réponses, tokens et coûts reçus par SSE directement depuis Arroyo, sans polling ni rechargement.
+- `Dashboard Streamlit` (`:8501`) : historique Iceberg, discussions, statistiques, requêtes Spark et comparateur technique.
+
+Le dashboard Streamlit propose trois vues explicites :
 
 - `Vue d'ensemble` : volumes, coûts, tokens, comparaison historique des modèles et des harnais, activité dans le temps et outils utilisés.
-- `Comparateur technique` : exécutions du même prompt et comparaison des métriques disponibles.
-
-Lancer une comparaison technique :
-
-```bash
-./scripts/run-technical-comparison.sh "Explique le fonctionnement de Kafka"
-```
+- `Comparateur technique` : rapprochement automatique des conversations CLI Pi et OpenCode qui utilisent le même prompt et le même modèle.
 - `Fil de discussion` : prompts, reponses et operations d'une session dans
   l'ordre chronologique.
 - `Requetes Spark` : requetes SQL de lecture executees par Spark sur Iceberg.

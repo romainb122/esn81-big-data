@@ -168,7 +168,7 @@ def render_processing_trace(trace):
 st.set_page_config(page_title="Conversation Observatory", page_icon="O", layout="wide")
 apply_design()
 live_listener = components.declare_component("bronze_commit_listener", path="/app/live_component")
-commit_event = live_listener(url="http://localhost:8503/events", default=None, key="bronze-commit-listener")
+commit_event = live_listener(url="http://localhost:8504/events", default=None, key="bronze-commit-listener")
 if commit_event and commit_event != st.session_state.get("last_bronze_commit"):
     st.session_state.last_bronze_commit = commit_event
     load_event_metadata_since.clear()
@@ -178,6 +178,7 @@ hero("Observatoire local", "Conversation Observatory", "Un espace clair pour sui
 
 with st.sidebar:
     st.header("Navigation")
+    st.link_button("Ouvrir le dashboard Arroyo Live", "http://localhost:8503", use_container_width=True)
     st.link_button("Ouvrir la documentation", "http://localhost:8502", use_container_width=True)
     st.page_link("pages/compare.py", label="Comparateur technique", icon="📊")
     st.divider()
